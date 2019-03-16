@@ -27,18 +27,29 @@ public class EventProducer implements Runnable {
 		try {
 
 			System.out.println("EventProducer:run...");
-			int[] a = p.getAction();
 			State s = p.getState();
-			System.out.println("EventProducer:a" + a[0] + " " + a[1]);
+			// System.out.println("EventProducer:a" + a[0] + " " + a[1]);
 			
-			while (!s.hasLost()){
+			int game_count = 0;
+			while (game_count<10){
+				int[] a = p.getAction();
 				s.makeMove(a[0], a[1]);
 				s.draw();
 				s.drawNext(0,0);
-				p.notifyAllListeners();
+				if (s.hasLost()) {
+					game_count += 1;
+					p.notifyAllListeners();
+					s = p.getState();
+				}
+				else {
+					p.notifyAllListeners();
+				}
+				
 				Thread.currentThread().sleep(10);
+
+				System.out.println("game count"+game_count);
 			}
-			// System.out.println(s.getRowsCleared());
+			System.out.println(s.getRowsCleared());
 			
 
 		} 

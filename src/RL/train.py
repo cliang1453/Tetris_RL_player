@@ -6,7 +6,6 @@ import random
 import importlib
 from py4j.java_gateway import JavaGateway, CallbackServerParameters
 
-
 pWidth = [
     [2],
     [1, 4],
@@ -76,8 +75,13 @@ class PythonListener(object):
 
     def notify(self, next_piece, field, is_end):
         print('notifying ...')
-        print(next_piece, is_end)
-        self.gateway.entry_point.takeAction(0, 0)
+        field = list(field)
+        field = [list(row) for row in field]
+        print(next_piece, field, is_end)
+        state = [next_piece, field, is_end]
+        action = self.policy.take_action(state)
+        self.gateway.entry_point.takeAction(int(action[0]), int(action[1]))
+        # self.gateway.entry_point.takeAction(0, 0)
 
     class Java:
         implements = ["org.py4j.smallbench.BenchListener"]
@@ -88,11 +92,11 @@ class HeuristicPolicy:
         self.args = args
 
     def take_action(self, state):
-        field = np.array(state[0])
-        next_piece_idx = state[1]
+        field = np.array(state[1])
+        next_piece_idx = state[0]
         is_end = state[2]
-        w = pWidth[next_piece_idx][0]
-        action = [0, 0]
+        # w = pWidth[next_piece_idx][0]
+        action = [0, random.randint(1, 5)]
 
         # top_list = get_top(field)
         # min_index = top_list.index(min(top_list))
@@ -111,7 +115,6 @@ def get_top(field):
                 top_i = i
         top_list.append(top_i)
     return top_list
-
 
 
 # class Policy:
