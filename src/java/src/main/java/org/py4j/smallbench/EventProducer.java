@@ -5,20 +5,17 @@ import java.util.concurrent.BlockingQueue;
 
 public class EventProducer implements Runnable {
 
-	private SmallBenchApplication application;
-
-	private BlockingQueue<Object> queue;
-
-	public EventProducer(SmallBenchApplication application) {
-		this.application = application;
-		this.queue = application.getQueue();
+	private PlayerSkeleton p;
+	
+	public EventProducer(PlayerSkeleton player) {
+		p = player;
 	}
 
-	public static void startProducer(SmallBenchApplication application) {
+	public static void startGame(PlayerSkeleton player) {
 
-		System.out.println("EventProducer:startProducer...");
+		System.out.println("EventProducer:startGame...");
 
-		EventProducer producer = new EventProducer(application);
+		EventProducer producer = new EventProducer(player);
 
 		Thread t = new Thread(producer);
 		t.start();
@@ -26,19 +23,32 @@ public class EventProducer implements Runnable {
 	}
 
 	public void run() {
-		System.out.println("EventProducer:run...");
-		for (int i = 0; i < 5; i++) {
-			try {
-				System.out.println("	EventProducer:run"+i);
-				int message = this.application.getMsg();
-				System.out.println("	EventProducer:message"+message);
-				queue.add("Testing from " + Thread.currentThread().getName());
-				application.notifyAllListeners();
-				Thread.currentThread().sleep(10);
+		
+		try {
+
+			System.out.println("EventProducer:run...");
+			int[] a = p.getAction();
+			State s = p.getState();
+			System.out.println("EventProducer:a" + a[0] + " " + a[1]);
+			
+			if(p.hasLost()){
+
+				System.out.println(s.getRowsCleared());
+
+			}
+			else{
+
+				s.makeMove(a[0], a[1]);
+				s.draw();
+				s.drawNext(0,0);
+
+			}
+
+			p.notifyAllListeners();
+			Thread.currentThread().sleep(10);
 
 			} catch (Exception e) {
 				e.printStackTrace();
 			}
-		}
 	}
 }
