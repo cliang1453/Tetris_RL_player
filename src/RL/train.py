@@ -64,6 +64,8 @@ class PythonListener(object):
         self.replay_buffer = replay_buffer
 
     def notify(self, next_piece, field, is_end):
+        field = list(field)
+        field = [list(row) for row in field]
         state = [next_piece, field, is_end]
         print(state)
         action = self.policy.take_action(state)

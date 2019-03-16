@@ -31,24 +31,19 @@ public class EventProducer implements Runnable {
 			State s = p.getState();
 			System.out.println("EventProducer:a" + a[0] + " " + a[1]);
 			
-			if(s.hasLost()){
-
-				System.out.println(s.getRowsCleared());
-
-			}
-			else{
-
+			while (!s.hasLost()){
 				s.makeMove(a[0], a[1]);
 				s.draw();
 				s.drawNext(0,0);
-
+				p.notifyAllListeners();
+				Thread.currentThread().sleep(10);
 			}
+			System.out.println(s.getRowsCleared());
+			
 
-			p.notifyAllListeners();
-			Thread.currentThread().sleep(10);
-
-			} catch (Exception e) {
+		} 
+		catch (Exception e) {
 				e.printStackTrace();
-			}
+		}
 	}
 }
