@@ -1,3 +1,5 @@
+package org.py4j.smallbench;
+
 import java.awt.Color;
 
 

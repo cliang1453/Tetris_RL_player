@@ -5,7 +5,44 @@ import os
 import random
 import importlib
 from py4j.java_gateway import JavaGateway, CallbackServerParameters
-from src.RL.params import *
+
+
+pWidth = [
+    [2],
+    [1, 4],
+    [2, 3, 2, 3],
+    [2, 3, 2, 3],
+    [2, 3, 2, 3],
+    [3, 2],
+    [3, 2]
+]
+pHeight = [
+    [2],
+    [4, 1],
+    [3, 2, 3, 2],
+    [3, 2, 3, 2],
+    [3, 2, 3, 2],
+    [2, 3],
+    [2, 3]
+]
+pBottom = [
+    [[0, 0]],
+    [[0], [0, 0, 0, 0]],
+    [[0, 0], [0, 1, 1], [2, 0], [0, 0, 0]],
+    [[0, 0], [0, 0, 0], [0, 2], [1, 1, 0]],
+    [[0, 1], [1, 0, 1], [1, 0], [0, 0, 0]],
+    [[0, 0, 1], [1, 0]],
+    [[1, 0, 0], [0, 1]]
+]
+pTop = [
+    [[2, 2]],
+    [[4], [1, 1, 1, 1]],
+    [[3, 1], [2, 2, 2], [3, 3], [1, 1, 2]],
+    [[1, 3], [2, 1, 1], [3, 3], [2, 2, 2]],
+    [[3, 2], [2, 2, 2], [2, 3], [1, 2, 1]],
+    [[1, 2, 2], [3, 2]],
+    [[2, 2, 1], [2, 3]]
+]
 
 
 def parse_args():
@@ -26,11 +63,11 @@ class PythonListener(object):
         self.policy = policy
         self.replay_buffer = replay_buffer
 
-    def notify(self, state):
+    def notify(self, next_piece, field, is_end):
+        state = [next_piece, field, is_end]
         print(state)
         action = self.policy.take_action(state)
-        is_end = state[-1]
-        self.gateway.entry_point.takeAction(action)
+        self.gateway.entry_point.takeAction(action[0], action[1])
         reward = calculate_reward(self.replay_buffer.state_list[-1], state, is_end)
         self.replay_buffer.add(state, action, reward, is_end)
         return "A Return Value"
@@ -132,11 +169,10 @@ def calculate_reward(state, next_state, is_end):
 def collect_data(policy, num_games=1):
     replay_buffer = ReplayBuffer()
 
-    for game_index in range(num_games):
-        gateway = JavaGateway(callback_server_parameters=CallbackServerParameters())
-        listener = PythonListener(gateway)
-        gateway.entry_point.registerBenchListener(listener)
-        gateway.entry_point.startGames(1)
+    gateway = JavaGateway(callback_server_parameters=CallbackServerParameters())
+    listener = PythonListener(gateway, policy, replay_buffer)
+    gateway.entry_point.registerBenchListener(listener)
+    gateway.entry_point.startGames(1)
 
     return replay_buffer
 
@@ -153,7 +189,7 @@ def collect_data(policy, num_games=1):
 #     logger.plot()
 
 
-def test_heuristic():
+def run_heuristic():
     args = parse_args()
     policy = HeuristicPolicy(args)
     replay_buffer = collect_data(policy, num_games=1)
@@ -161,4 +197,4 @@ def test_heuristic():
 
 
 if __name__ == "__main__":
-    test_heuristic()
+    run_heuristic()

@@ -6,7 +6,7 @@ apply plugin: 'application'
 sourceCompatibility = 1.7
 version = '1.0'
 group = 'py4j-small-bench'
-mainClassName = "org.py4j.smallbench.SmallBenchApplication"
+mainClassName = "org.py4j.smallbench.PlayerSkeleton"
 
 repositories {
 	mavenCentral()

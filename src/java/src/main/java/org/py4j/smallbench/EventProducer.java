@@ -31,7 +31,7 @@ public class EventProducer implements Runnable {
 			State s = p.getState();
 			System.out.println("EventProducer:a" + a[0] + " " + a[1]);
 			
-			if(p.hasLost()){
+			if(s.hasLost()){
 
 				System.out.println(s.getRowsCleared());
 

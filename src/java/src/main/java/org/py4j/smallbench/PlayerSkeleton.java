@@ -1,3 +1,12 @@
+package org.py4j.smallbench;
+
+import py4j.GatewayServer;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+
 import java.util.*;
 import java.io.*;
 import py4j.GatewayServer;
@@ -9,10 +18,10 @@ public class PlayerSkeleton {
 
 	private int slot; 
 	private int orient;
-	private State s;
-	private TFrame t; 
+	private static State s;
+	private static TFrame t; 
 	private List<BenchListener> listeners = new ArrayList<BenchListener>();
-	private PlayerSkeleton p = new PlayerSkeleton();
+	
 
 	// public int pickMove(State s, int[][] legalMoves) {
 	// 	Random generator = new Random();
@@ -25,16 +34,19 @@ public class PlayerSkeleton {
 		return action;
 	}
 
-	public int getState(){
+	public State getState(){
 		return s;
 	}
 
+	public void registerBenchListener(BenchListener listener) {
+		listeners.add(listener);
+	}
 
-	public void startGame(int count) {
+	public void startGames(int count) {
 		System.out.println("PlayerSkeleton:startGame...");
 		for (int i = 0; i < count; i++) {
 			System.out.println("In startGame"+i);
-			EventProducer.start_game(this);
+			EventProducer.startGame(this);
 		}
 	}
 
@@ -52,7 +64,7 @@ public class PlayerSkeleton {
 		try {
 			int next_piece = s.getNextPiece();
 			int[][] field = s.getField();
-			boolean is_end = p.hasLost();
+			boolean is_end = s.hasLost();
 			for (BenchListener listener : listeners) {
 				listener.notify(next_piece, field, is_end);
 			}
@@ -64,7 +76,7 @@ public class PlayerSkeleton {
 
 
 	public static void main(String[] args) {
-
+		PlayerSkeleton p = new PlayerSkeleton();
 		GatewayServer server = new GatewayServer(p);
 		server.start();
 		
