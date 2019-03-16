@@ -59,15 +59,23 @@ public class PlayerSkeleton {
 	
 
 	public void notifyAllListeners() {
-		System.out.println("	SmallBench:notifyAllListeners");
+		System.out.println("SmallBench:notifyAllListeners");
 		
 		try {
+			System.out.println("0");
 			int next_piece = s.getNextPiece();
-			int[][] field = s.getField();
+			System.out.println("1");
+			int[][] field = new int[s.COLS][s.ROWS];
+			field = s.getField();
+			System.out.println("2");
 			boolean is_end = s.hasLost();
+			System.out.println("3");
 			for (BenchListener listener : listeners) {
+				System.out.println("in for loop");
 				listener.notify(next_piece, field, is_end);
+				System.out.println("finish one loop");
 			}
+			System.out.println("completed");
 		} catch (Exception e) {
 			e.printStackTrace();
 		}

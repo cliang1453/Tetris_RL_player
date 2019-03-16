@@ -38,7 +38,7 @@ public class EventProducer implements Runnable {
 				p.notifyAllListeners();
 				Thread.currentThread().sleep(10);
 			}
-			System.out.println(s.getRowsCleared());
+			// System.out.println(s.getRowsCleared());
 			
 
 		} 

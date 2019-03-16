@@ -63,16 +63,21 @@ class PythonListener(object):
         self.policy = policy
         self.replay_buffer = replay_buffer
 
+    # def notify(self, next_piece, field, is_end):
+    #     # field = list(field)
+    #     # field = [list(row) for row in field]
+    #     state = [next_piece, field, is_end]
+    #     print(state)
+    #     action = self.policy.take_action(state)
+    #     self.gateway.entry_point.takeAction(action[0], action[1])
+    #     reward = calculate_reward(self.replay_buffer.state_list[-1], state, is_end)
+    #     self.replay_buffer.add(state, action, reward, is_end)
+    #     return "A Return Value"
+
     def notify(self, next_piece, field, is_end):
-        field = list(field)
-        field = [list(row) for row in field]
-        state = [next_piece, field, is_end]
-        print(state)
-        action = self.policy.take_action(state)
-        self.gateway.entry_point.takeAction(action[0], action[1])
-        reward = calculate_reward(self.replay_buffer.state_list[-1], state, is_end)
-        self.replay_buffer.add(state, action, reward, is_end)
-        return "A Return Value"
+        print('notifying ...')
+        print(next_piece, is_end)
+        self.gateway.entry_point.takeAction(0, 0)
 
     class Java:
         implements = ["org.py4j.smallbench.BenchListener"]
