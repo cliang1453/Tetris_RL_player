@@ -5,83 +5,82 @@ import os
 import random
 import importlib
 from py4j.java_gateway import JavaGateway, CallbackServerParameters
-
-pWidth = [
-    [2],
-    [1, 4],
-    [2, 3, 2, 3],
-    [2, 3, 2, 3],
-    [2, 3, 2, 3],
-    [3, 2],
-    [3, 2]
-]
-pHeight = [
-    [2],
-    [4, 1],
-    [3, 2, 3, 2],
-    [3, 2, 3, 2],
-    [3, 2, 3, 2],
-    [2, 3],
-    [2, 3]
-]
-pBottom = [
-    [[0, 0]],
-    [[0], [0, 0, 0, 0]],
-    [[0, 0], [0, 1, 1], [2, 0], [0, 0, 0]],
-    [[0, 0], [0, 0, 0], [0, 2], [1, 1, 0]],
-    [[0, 1], [1, 0, 1], [1, 0], [0, 0, 0]],
-    [[0, 0, 1], [1, 0]],
-    [[1, 0, 0], [0, 1]]
-]
-pTop = [
-    [[2, 2]],
-    [[4], [1, 1, 1, 1]],
-    [[3, 1], [2, 2, 2], [3, 3], [1, 1, 2]],
-    [[1, 3], [2, 1, 1], [3, 3], [2, 2, 2]],
-    [[3, 2], [2, 2, 2], [2, 3], [1, 2, 1]],
-    [[1, 2, 2], [3, 2]],
-    [[2, 2, 1], [2, 3]]
-]
+from params import *
+import math
+from model import QFunc
+import torch
+import torch.optim as optim
+from torch.autograd import Variable
+from termcolor import colored
+import matplotlib.pyplot as plt
 
 
 def parse_args():
     parser = argparse.ArgumentParser("RL for Tetris")
     parser.add_argument("--alg", type=str, default="", help="reinforcement learning algorithm")
     parser.add_argument("--lr", type=float, default=1e-4, help="learning rate")
+    parser.add_argument("--alpha", type=float, default=0.95, help="alpha")
+    parser.add_argument("--eps", type=float, default=0.01, help="eps")
+    parser.add_argument("--epsilon-g", type=float, default=0.3, help="epsilon greedy")
     parser.add_argument("--num-episodes", type=int, default=1000, help="number of episodes")
     parser.add_argument("--num-games", type=int, default=1000, help="number of games")
+    parser.add_argument("--batch-size", type=int, default=32, help="number of games")
     parser.add_argument("--save-dir", type=str, default="", help="directory to save policy and plots")
+    parser.add_argument("--gamma", type=float, default=0.95, help="discount factor")
+
     args = parser.parse_args()
     return args
 
 
+"""
+state: [ndarray(rows * cols), next_piecee]
+
+"""
+
+
 class PythonListener(object):
 
-    def __init__(self, gateway, policy, replay_buffer):
+    def __init__(self, args, gateway, policy, replay_buffer):
+        self.args = args
         self.gateway = gateway
         self.policy = policy
         self.replay_buffer = replay_buffer
 
-    # def notify(self, next_piece, field, is_end):
-    #     # field = list(field)
-    #     # field = [list(row) for row in field]
-    #     state = [next_piece, field, is_end]
-    #     print(state)
-    #     action = self.policy.take_action(state)
-    #     self.gateway.entry_point.takeAction(action[0], action[1])
-    #     reward = calculate_reward(self.replay_buffer.state_list[-1], state, is_end)
-    #     self.replay_buffer.add(state, action, reward, is_end)
-    #     return "A Return Value"
-
-    def notify(self, next_piece, field, is_end):
-        print('notifying ...')
+    def notify(self, next_piece, field, rows_cleared, is_end):
+        print(colored("=" * 40 + " notify " + "=" * 40, 'red'))
+        # format state
+        print("\tnext_piece\t", next_piece)
+        print("\tis_end\t", is_end)
         field = list(field)
         field = [list(row) for row in field]
-        print(next_piece, field, is_end)
-        state = [next_piece, field, is_end]
-        action = self.policy.take_action(state)
+        field = field + [[0] * cols for _ in range(4)]  # add 4 rows on top
+        field = np.array(field)
+        print("\tfield", field[::-1])
+        field = field > 0
+        state = [field, next_piece]
+
+        # select action
+        if is_end:
+            action = [0, 0]
+        else:
+            action = self.policy.take_action(state)
+
+        # store transition
+        print("\t adding to replay buffer...")
+        self.replay_buffer.add(state, action, rows_cleared, is_end)
+
+        if self.replay_buffer.get_size() % 20 == 0:
+            self.replay_buffer.visualize_replaybuffer()
+
+        # sample and update
+        if len(self.replay_buffer.valid_idx_list) > self.args.batch_size:
+            print("\tsampling...")
+            samples = self.replay_buffer.sample(self.args.batch_size)
+            self.policy.learn(samples)
+
+        # run simulation step
+        print("\t calling java with action", action)
         self.gateway.entry_point.takeAction(int(action[0]), int(action[1]))
-        # self.gateway.entry_point.takeAction(0, 0)
 
     class Java:
         implements = ["org.py4j.smallbench.BenchListener"]
@@ -92,70 +91,197 @@ class HeuristicPolicy:
         self.args = args
 
     def take_action(self, state):
-        field = np.array(state[1])
-        next_piece_idx = state[0]
-        is_end = state[2]
-        # w = pWidth[next_piece_idx][0]
         action = [0, random.randint(1, 5)]
-
-        # top_list = get_top(field)
-        # min_index = top_list.index(min(top_list))
-        # action = [min_index, 0]
-
         return action
 
 
-def get_top(field):
-    h, w = field.shape
-    top_list = []
-    for j in range(w):
-        top_i = 0
-        for i in range(h):
-            if field[i][j]:
-                top_i = i
-        top_list.append(top_i)
-    return top_list
+def get_top(board):
+    top_board = np.zeros(cols)
+    for row_id in range(rows):
+        row = board[row_id]
+        filled_indices = np.nonzero(row)
+        top_board[filled_indices] = np.maximum(row_id + 1, top_board[filled_indices])
+    return top_board
 
 
-# class Policy:
-#     def __init__(self, args):
-#         # module = importlib.import_module(module_name)
-#         algorithm = getattr(self, args.alg)
-#         return
-#
-#     def take_action(self, state):
-#         action = None
-#         return action
-#
-#     def learn(self, replay_buffer):
-#         return
+def simulate_drop(state, action):
+    board, idx = state
+    ori, col_idx = action
+
+    # find board top
+    top_board = get_top(board)
+    col_start = col_idx
+    block_width = pWidth[idx][ori]
+    col_end = col_start + block_width
+    top_board_at_block = top_board[col_start:col_end]
+
+    # find block bottom
+    bottom_block = np.array(pBottom[idx][ori])
+
+    # calculate difference
+    col_gap = top_board_at_block - bottom_block
+    gap = max(col_gap)
+
+    # place the block
+    board_sim = np.copy(board)
+    for col in range(col_start, col_end):
+        j = col - col_start
+        for i in range(pBottom[idx][ori][j], pTop[idx][ori][j]):
+            row = int(i + gap)
+            board_sim[row][col] = 1
+
+    return board_sim
+
+
+class Policy:
+    def __init__(self, args):
+        self.args = args
+        self.q_func = QFunc(args)
+        self.optimizer = optim.RMSprop(self.q_func.parameters(), lr=args.lr, alpha=args.alpha, eps=args.eps)
+        self.logger = LossLogger()
+        return
+
+    def take_action(self, state):
+
+        print("\ttake_action:")
+
+        action_space = get_action_space(state[1])
+
+        # epsilon greedy
+        if random.random() < self.args.epsilon_g:
+            print("taking random action")
+            action = random.choice(action_space)
+            print(action)
+            return action
+
+        # choose action with max Q
+        max_q = -math.inf
+        max_action = None
+
+        qs = []
+
+        print("\t\tqs:\t", end="")
+        for action in action_space:
+            this_q = self.get_Q(state, action).detach()
+            print(this_q.data.numpy(), end=",")
+            qs.append(this_q)
+            if this_q > max_q:
+                max_q = this_q
+                max_action = action
+
+        return max_action
+
+    def get_Q(self, state, action):
+        state_sim = simulate_drop(state, action)
+        state_sim = np.expand_dims(state_sim, axis=0).astype(float)
+        state_sim_var = Variable(torch.from_numpy(state_sim)).unsqueeze(0).float()
+        Q = self.q_func(state_sim_var)
+        return Q
+
+    def learn(self, samples):
+        # compute ys
+        print("\tin learning:")
+        states, actions, next_states, rewards, is_ends = samples
+        ys = []
+        for i in range(self.args.batch_size):
+            if is_ends[i]:
+                ys.append(rewards[i])
+            else:
+                action_space = get_action_space(next_states[i][1])
+                max_q = -math.inf
+                for next_action in action_space:
+                    max_q = max(max_q, self.get_Q(next_states[i], next_action).detach())
+                ys.append(rewards[i] + self.args.gamma * max_q)
+
+        # compute Q
+        loss = 0
+        print("\t\tys:\t", end="")
+        for i in range(self.args.batch_size):
+            Q = self.get_Q(states[i], actions[i])
+            print("(Q:", Q.data.numpy(), end=",")
+            print("ys:", ys[i], end=") ")
+            loss += (ys[i] - Q) ** 2
+        loss /= self.args.batch_size
+
+        self.logger.add_loss(loss.data.numpy().item())
+        if len(self.logger.loss_list) % 10 == 0:
+            self.logger.plot_loss()
+
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+
+
+class LossLogger:
+    def __init__(self):
+        self.loss_list = []
+
+    def add_loss(self, loss):
+        self.loss_list.append(loss)
+
+    def plot_loss(self):
+        plt.plot(self.loss_list)
+        plt.show()
 
 
 class ReplayBuffer:
-    def __init__(self):
+    def __init__(self, max_capacity=1000):
         self.state_list = []
         self.action_list = []
-        self.reward_list = []
+        self.cleared_list = []
         self.is_end_list = []
         self.count = 0
-        self.all_list = []
+        self.valid_idx_list = []
+        self.start_index = 0
+        self.max_capacity = max_capacity
 
-    def add(self, state, action, reward, is_end):
+    def get_size(self):
+        return len(self.valid_idx_list)
+
+    def add(self, state, action, rows_cleared, is_end):
         self.state_list.append(state)
         self.action_list.append(action)
-        self.reward_list.append(reward)
+        self.cleared_list.append(rows_cleared)
         self.is_end_list.append(is_end)
 
+        if not is_end:
+            self.valid_idx_list.append(self.count)
+        self.count += 1
+
+        # keep replay buffer udner capacity
+        if len(self.state_list) > self.max_capacity:
+            self.state_list = self.state_list[100:]
+            self.action_list = self.action_list[100:]
+            self.cleared_list = self.cleared_list[100:]
+            self.is_end_list = self.is_end_list[100:]
+            self.start_index += 100
+            idx = np.argmax(self.valid_idx_list >= self.start_index)
+            self.valid_idx_list = self.valid_idx_list[idx:]
+
     def sample(self, num_samples):
-        samples = random.sample(self.all_list, num_samples)
-        return samples
+        indices = np.random.choice(self.valid_idx_list[:-1], num_samples, replace=False)
+        indices -= self.start_index
+        sampled_states = [self.state_list[i] for i in indices]
+        sampled_actions = [self.action_list[i] for i in indices]
+        sampled_next_state = [self.state_list[i + 1] for i in indices]
+        sampled_rewards = [self.calc_reward(i) for i in indices]
+        sampled_is_end = [self.is_end_list[i + 1] for i in indices]
+        return [sampled_states, sampled_actions, sampled_next_state, sampled_rewards, sampled_is_end]
 
-    def post_process(self):
-        self.all_list = zip(self.state_list, self.action_list, self.reward_list, self.is_end_list)
-        return
+    def visualize_replaybuffer(self):
+        print("end_list", self.is_end_list)
+        print("valid_idx_list", self.valid_idx_list)
+        sampled_states, sampled_actions, sampled_next_state, sampled_rewards, sampled_is_end = self.sample(10)
+        print("sampled_is_end", sampled_is_end)
+        print("sampled_rewards", sampled_rewards)
 
-    def get_average_reward(self):
-        return 0
+    def calc_reward(self, i):
+        if self.is_end_list[i + 1]:
+
+            reward = -10
+        else:
+            reward = 1 + (self.cleared_list[i + 1] - self.cleared_list[i]) * 5
+        return reward
 
 
 class Logger:
@@ -176,35 +302,57 @@ def calculate_reward(state, next_state, is_end):
     return reward
 
 
-def collect_data(policy, num_games=1):
-    replay_buffer = ReplayBuffer()
-
+def collect_data(args, policy, replay_buffer, num_games=1):
     gateway = JavaGateway(callback_server_parameters=CallbackServerParameters())
-    listener = PythonListener(gateway, policy, replay_buffer)
+    listener = PythonListener(args, gateway, policy, replay_buffer)
     gateway.entry_point.registerBenchListener(listener)
-    gateway.entry_point.startGames(1)
-
-    return replay_buffer
+    gateway.entry_point.startGames(1, num_games)
 
 
-# def main():
-#     args = parse_args()
-#     logger = Logger(args)
-#     env = Environment()
-#     policy = Policy(args)
-#     for episode in range(args.num_episodes):
-#         replay_buffer = collect_data(env, policy, num_games=args.num_games)
-#         policy.learn(replay_buffer)
-#         logger.add(replay_buffer.get_average_reward())
-#     logger.plot()
+def main():
+    args = parse_args()
+    logger = Logger(args)
+    policy = Policy(args)
+    replay_buffer = ReplayBuffer()
+    collect_data(args, policy, replay_buffer, num_games=args.num_games)
 
 
 def run_heuristic():
     args = parse_args()
     policy = HeuristicPolicy(args)
-    replay_buffer = collect_data(policy, num_games=1)
-    print(replay_buffer.reward_list)
+    replay_buffer = ReplayBuffer()
+    collect_data(args, policy, replay_buffer, num_games=args.num_games)
+
+
+def test_policy():
+    args = parse_args()
+    logger = Logger(args)
+    policy = Policy(args)
+    replay_buffer = ReplayBuffer()
+
+    for i in range(2):
+
+        # create some sample state, next piece
+        next_piece = random.randint(0, 6)
+        field = np.zeros((rows + 4, cols))
+        field = field > 0
+        is_end = False
+        rows_cleared = 0
+        state = [field, next_piece]
+
+        # select action
+        action = policy.take_action(state)
+
+        # store transition
+        replay_buffer.add(state, action, rows_cleared, is_end)
+
+        # sample and update
+        if len(replay_buffer.valid_idx_list) > args.batch_size:
+            samples = replay_buffer.sample(args.batch_size)
+            policy.learn(samples)
 
 
 if __name__ == "__main__":
-    run_heuristic()
+    # run_heuristic()
+    main()
+    # test_policy()

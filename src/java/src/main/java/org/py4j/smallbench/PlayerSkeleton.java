@@ -21,6 +21,7 @@ public class PlayerSkeleton {
 	private static State s;
 	private static TFrame t; 
 	private List<BenchListener> listeners = new ArrayList<BenchListener>();
+	public int num_games;
 	
 
 	// public int pickMove(State s, int[][] legalMoves) {
@@ -42,10 +43,11 @@ public class PlayerSkeleton {
 		listeners.add(listener);
 	}
 
-	public void startGames(int count) {
+	public void startGames(int count, int num_games_in) {
+		num_games = num_games_in;
 		System.out.println("PlayerSkeleton:startGame...");
 		for (int i = 0; i < count; i++) {
-			System.out.println("In startGame"+i);
+			// System.out.println("In startGame"+i);
 			EventProducer.startGame(this);
 		}
 	}
@@ -59,7 +61,7 @@ public class PlayerSkeleton {
 	
 
 	public void notifyAllListeners() {
-		System.out.println("SmallBench:notifyAllListeners");
+		// System.out.println("SmallBench:notifyAllListeners");
 		
 		try {
 			int next_piece = s.getNextPiece();
@@ -67,11 +69,11 @@ public class PlayerSkeleton {
 			field = s.getField();
 			boolean is_end = s.hasLost();
 			for (BenchListener listener : listeners) {
-				listener.notify(next_piece, field, is_end);
+				listener.notify(next_piece, field, s.getRowsCleared(), is_end);
 			}
 
 			if (is_end) {
-				System.out.println("making a new state");
+				System.out.println("==============making a new state===================");
 				s = new State();
 				System.out.println(s.hasLost());
 				t = new TFrame(s);

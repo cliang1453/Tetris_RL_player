@@ -13,7 +13,7 @@ public class EventProducer implements Runnable {
 
 	public static void startGame(PlayerSkeleton player) {
 
-		System.out.println("EventProducer:startGame...");
+		// System.out.println("EventProducer:startGame...");
 
 		EventProducer producer = new EventProducer(player);
 
@@ -26,12 +26,13 @@ public class EventProducer implements Runnable {
 		
 		try {
 
-			System.out.println("EventProducer:run...");
+			// System.out.println("EventProducer:run...");
 			State s = p.getState();
 			// System.out.println("EventProducer:a" + a[0] + " " + a[1]);
 			
 			int game_count = 0;
-			while (game_count<10){
+
+			while (game_count<p.num_games){
 				int[] a = p.getAction();
 				s.makeMove(a[0], a[1]);
 				s.draw();
@@ -47,7 +48,7 @@ public class EventProducer implements Runnable {
 				
 				Thread.currentThread().sleep(10);
 
-				System.out.println("game count"+game_count);
+				System.out.println("game count "+game_count+"/"+p.num_games);
 			}
 			System.out.println(s.getRowsCleared());
 			
