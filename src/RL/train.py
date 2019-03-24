@@ -28,7 +28,9 @@ def parse_args():
     parser.add_argument("--save-interval", type=int, default=10, help="interval to save validation plots")
     parser.add_argument("--gamma", type=float, default=0.95, help="discount factor")
     parser.add_argument("--max-capacity", type=int, default=1000, help="maximum capacity of replay buffer")
-
+    parser.add_argument("--learning-start", type=int, default=500, help="learning start after number of episodes")
+    parser.add_argument("--num_collect_iter", type=int, default=100, help="number of iteration to collect data per one learning step")
+    parser.add_argument("--num_target_update_iter", type=int, default=100, help = "number of iterations to update target Q")
     args = parser.parse_args()
     return args
 
@@ -155,18 +157,20 @@ class Policy:
     def __init__(self, args):
         self.args = args
         self.logger = args.logger
-        self.q_func = QFunc(args)
+        self.Qs = QFunc(args)
+        self.target_Qs = QFunc(args)
         self.optimizer = optim.RMSprop(self.q_func.parameters(), lr=args.lr, alpha=args.alpha, eps=args.eps)
+        self.num_param_updates = 0
         return
 
-    def take_action(self, state, is_valid=True):
+    def take_action(self, state, strategy = "epsilon_greedy"):
 
         print("\ttake_action:")
 
         action_space = get_action_space(state[1])
 
         # epsilon greedy
-        if not is_valid and (random.random() < self.args.epsilon_g):
+        if (strategy == "epsilon_greedy" and (random.random() < self.args.epsilon_g)) or strategy == 'random':
             print("taking random action")
             action = random.choice(action_space)
             print(action)
@@ -177,7 +181,7 @@ class Policy:
         # max_action = None
         # qs = []
 
-        qs = self.get_Qs(state, action_space).detach()
+        qs = self.get_Qs(state, action_space, q_func = self.Qs).detach()
         qs = qs.data.numpy()
         print("\t\tqs:\t", qs)
         max_action_idx = np.argmax(qs)
@@ -193,14 +197,14 @@ class Policy:
 
         return max_action
 
-    def get_Q(self, state, action):
-        state_sim = simulate_drop(state, action)
-        state_sim = np.expand_dims(state_sim, axis=0).astype(float)
-        state_sim_var = Variable(torch.from_numpy(state_sim)).unsqueeze(0).float()
-        Q = self.q_func(state_sim_var)
-        return Q
+    # def get_Q(self, state, action):
+    #     state_sim = simulate_drop(state, action)
+    #     state_sim = np.expand_dims(state_sim, axis=0).astype(float)
+    #     state_sim_var = Variable(torch.from_numpy(state_sim)).unsqueeze(0).float()
+    #     Q = self.q_func(state_sim_var)
+    #     return Q
 
-    def get_Qs(self, states, actions, diff_states=False):
+    def get_Qs(self, states, actions, diff_states=False, q_func):
         if not diff_states:
             states = [states] * len(actions)
         state_sim_list = []
@@ -210,10 +214,11 @@ class Policy:
             state_sim_list.append(state_sim)
         states_sim = np.stack(state_sim_list, axis=0)
         states_sim_var = Variable(torch.from_numpy(states_sim)).float()
-        Qs = self.q_func(states_sim_var)
+        Qs = q_func(states_sim_var)
         return Qs
 
     def learn(self, samples):
+        
         # compute ys
         print("\tin learning:")
         states, actions, next_states, rewards, is_ends = samples
@@ -223,18 +228,17 @@ class Policy:
                 ys.append(rewards[i])
             else:
                 action_space = get_action_space(next_states[i][1])
-                qs = self.get_Qs(next_states[i], action_space).detach()
+                qs = self.get_Qs(next_states[i], action_space, q_func = self.target_Qs).detach()
                 max_q = np.asscalar(np.amax(qs.data.numpy()))
 
                 # for next_action in action_space:
                 #     max_q = max(max_q, self.get_Q(next_states[i], next_action).detach())
                 ys.append(rewards[i] + self.args.gamma * max_q)
-
+        
         # compute Q
         loss = 0
         print("\t\tys:\t", end="")
-
-        Qs = self.get_Qs(states, actions, diff_states=True)
+        Qs = self.get_Qs(states, actions, diff_states=True, q_func = self.Qs)
         ys_var = Variable(torch.from_numpy(np.array(ys))).float().view(-1, 1)
         loss = torch.sum((Qs-ys_var)**2)/self.args.batch_size
 
@@ -247,11 +251,15 @@ class Policy:
         loss.backward()
         self.optimizer.step()
 
+        self.num_param_updates += 1
+        if self.num_param_updates % self.args.num_target_update_iter == 0:
+            self.target_Qs.load_state_dict(self.Qs.state_dict())
+
     def save_params(self):
-        torch.save(self.q_func.state_dict(), os.path.join(self.args.save_dir, "mymodel.pth"))
+        torch.save(self.Qs.state_dict(), os.path.join(self.args.save_dir, "mymodel.pth"))
 
     def load_params(self):
-        self.q_func.load_state_dict(torch.load(os.path.join(self.args.save_dir, "mymodel.pth")))
+        self.Qs.load_state_dict(torch.load(os.path.join(self.args.save_dir, "mymodel.pth")))
 
 
 class Logger:
@@ -376,11 +384,12 @@ def collect_data(args, policy, replay_buffer, num_games=1):
 
 
 def main():
-    args = parse_args()
-    args.logger = Logger(args)
-    policy = Policy(args)
-    replay_buffer = ReplayBuffer(args)
-    collect_data(args, policy, replay_buffer, num_games=args.num_games)
+    # args = parse_args()
+    # args.logger = Logger(args)
+    # policy = Policy(args)
+    # replay_buffer = ReplayBuffer(args)
+    # collect_data(args, policy, replay_buffer, num_games=args.num_games)
+    train()
 
 
 def run_heuristic():
@@ -431,6 +440,70 @@ def test_replay_buffer():
             rows_cleared = 0
             is_end = True if t == 49 else False
             replay_buffer.add(state, action, rows_cleared, is_end)
+
+def train():
+
+    args = parse_args()
+    args.logger = Logger(args)
+    policy = Policy(args)
+    replay_buffer = ReplayBuffer(args)
+    env = TetrisGame(args)
+
+    for i in range(args.num_episodes):
+
+
+        # Collect data
+
+        curr_state = [env.field, env.next_piece]
+        if i < args.start_learning:
+            strategy = "random"
+        else:
+            strategy = "epsilon_greedy"
+        
+        for _ in range(args.num_collect_iter):
+            
+            action = policy.take_action(curr_state, strategy)
+            next_piece, field, rows_cleared, is_end = env.step(action)
+            
+            print(colored("=" * 40 + str(self.game_count) + "=" * 40, 'red'))
+            # format state
+            print("\tnext_piece\t", next_piece)
+            print("\tis_end\t", is_end)
+            
+            field = list(field)
+            field = [list(row) for row in field]
+            field = field + [[0] * cols for _ in range(4)]  # add 4 rows on top
+            field = np.array(field)
+            
+            print("\tfield", field[::-1])
+            field = field > 0
+            state = [field, next_piece]
+
+            if not game_count % args.save_interval == 0:
+                # store transition
+                print("\t adding to replay buffer...")
+                replay_buffer.add(state, action, rows_cleared, is_end)
+
+                if replay_buffer.get_size() % 20 == 0:
+                    replay_buffer.visualize_replaybuffer()
+            else:
+                print("\t adding to validation replay buffer...")
+                validation_replay_buffer.add(state, action, rows_cleared, is_end)
+
+            # run simulation step
+            print("\t calling java with action", action)
+            if is_end:
+                game_count += 1
+                if game_count % args.save_interval == 0::
+                    policy.save_params()
+
+
+        if i >= args.start_learning and len(replay_buffer.valid_idx_list) > args.batch_size:
+            
+            samples = replay_buffer.sample(args.batch_size)
+            policy.learn(samples)
+
+
 
 
 if __name__ == "__main__":
