@@ -63,7 +63,8 @@ def simulate_drop(state, action, in_game=False):
 
 
 class TetrisGame:
-    def __init__(self, do_visualize=False):
+    def __init__(self, args, do_visualize=False):
+        self.args = args
         self.field = np.zeros((rows + 4, cols))
         self.next_piece = None
         self.generate_random_piece()
@@ -104,7 +105,7 @@ class TetrisGame:
         plt.pause(0.05)
 
 
-if __name__ == "__main__":
+def test_tetris():
     env = TetrisGame(do_visualize=False)
     next_piece, field, rows_cleared, is_end = env.reset()
     for t in count():
@@ -123,3 +124,15 @@ if __name__ == "__main__":
 
         next_piece, field, rows_cleared, is_end = env.step(action)
         print('action', action)
+
+
+def calc_reward(rows_cleared_prev, rows_cleared, is_end):
+    if is_end:
+        reward = -10
+    else:
+        reward = 1 + (rows_cleared - rows_cleared_prev) * 5
+    return reward
+
+
+if __name__ == "__main__":
+    test_tetris()
