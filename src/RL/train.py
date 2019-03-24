@@ -12,7 +12,6 @@ import torch
 import torch.optim as optim
 from torch.autograd import Variable
 from termcolor import colored
-import matplotlib.pyplot as plt
 
 
 def parse_args():
@@ -174,19 +173,23 @@ class Policy:
             return action
 
         # choose action with max Q
-        max_q = -math.inf
-        max_action = None
+        # max_q = -math.inf
+        # max_action = None
+        # qs = []
 
-        qs = []
+        qs = self.get_Qs(state, action_space).detach()
+        qs = qs.data.numpy()
+        print("\t\tqs:\t", qs)
+        max_action_idx = np.argmax(qs)
+        max_action = action_space[max_action_idx]
 
-        print("\t\tqs:\t", end="")
-        for action in action_space:
-            this_q = self.get_Q(state, action).detach()
-            print(this_q.data.numpy(), end=",")
-            qs.append(this_q)
-            if this_q > max_q:
-                max_q = this_q
-                max_action = action
+        # for action in action_space:
+        #     this_q = self.get_Q(state, action).detach()
+        #     print(this_q.data.numpy(), end=",")
+        #     qs.append(this_q)
+        #     if this_q > max_q:
+        #         max_q = this_q
+        #         max_action = action
 
         return max_action
 
@@ -196,6 +199,19 @@ class Policy:
         state_sim_var = Variable(torch.from_numpy(state_sim)).unsqueeze(0).float()
         Q = self.q_func(state_sim_var)
         return Q
+
+    def get_Qs(self, states, actions, diff_states=False):
+        if not diff_states:
+            states = [states] * len(actions)
+        state_sim_list = []
+        for state, action in zip(states, actions):
+            state_sim = simulate_drop(state, action)
+            state_sim = np.expand_dims(state_sim, axis=0).astype(float)
+            state_sim_list.append(state_sim)
+        states_sim = np.stack(state_sim_list, axis=0)
+        states_sim_var = Variable(torch.from_numpy(states_sim)).float()
+        Qs = self.q_func(states_sim_var)
+        return Qs
 
     def learn(self, samples):
         # compute ys
@@ -207,20 +223,20 @@ class Policy:
                 ys.append(rewards[i])
             else:
                 action_space = get_action_space(next_states[i][1])
-                max_q = -math.inf
-                for next_action in action_space:
-                    max_q = max(max_q, self.get_Q(next_states[i], next_action).detach())
+                qs = self.get_Qs(next_states[i], action_space).detach()
+                max_q = np.asscalar(np.amax(qs.data.numpy()))
+
+                # for next_action in action_space:
+                #     max_q = max(max_q, self.get_Q(next_states[i], next_action).detach())
                 ys.append(rewards[i] + self.args.gamma * max_q)
 
         # compute Q
         loss = 0
         print("\t\tys:\t", end="")
-        for i in range(self.args.batch_size):
-            Q = self.get_Q(states[i], actions[i])
-            print("(Q:", Q.data.numpy(), end=",")
-            print("ys:", ys[i], end=") ")
-            loss += (ys[i] - Q) ** 2
-        loss /= self.args.batch_size
+
+        Qs = self.get_Qs(states, actions, diff_states=True)
+        ys_var = Variable(torch.from_numpy(np.array(ys))).float().view(-1, 1)
+        loss = torch.sum((Qs-ys_var)**2)/self.args.batch_size
 
         self.logger.add_loss(loss.data.numpy().item())
         if len(self.logger.loss_list) % 10 == 0:
@@ -244,9 +260,6 @@ class Logger:
         self.loss_list = []
         self.reward_list = []
         self.reward_validation_list = []
-        # self.loss_figure = plt.figure("loss")
-        # self.reward_figure = plt.figure("reward")
-        # self.reward_validation_figure = plt.figure("validation reward")
 
     def add_loss(self, loss):
         self.loss_list.append(loss)
@@ -379,7 +392,7 @@ def run_heuristic():
 
 def test_policy():
     args = parse_args()
-    logger = Logger(args)
+    args.logger = Logger(args)
     policy = Policy(args)
     replay_buffer = ReplayBuffer(args)
 
@@ -416,9 +429,8 @@ def test_replay_buffer():
             state = [field, 0]
             action = [0, 0]
             rows_cleared = 0
-            is_end = True if t==49 else False
+            is_end = True if t == 49 else False
             replay_buffer.add(state, action, rows_cleared, is_end)
-
 
 
 if __name__ == "__main__":
