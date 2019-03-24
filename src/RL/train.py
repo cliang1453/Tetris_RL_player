@@ -26,6 +26,7 @@ def parse_args():
     parser.add_argument("--num-games", type=int, default=1000, help="number of games")
     parser.add_argument("--batch-size", type=int, default=32, help="number of games")
     parser.add_argument("--save-dir", type=str, default="log", help="directory to save policy and plots")
+    parser.add_argument("--save-interval", type=int, default=10, help="interval to save validation plots")
     parser.add_argument("--gamma", type=float, default=0.95, help="discount factor")
     parser.add_argument("--max-capacity", type=int, default=1000, help="maximum capacity of replay buffer")
 
@@ -46,10 +47,11 @@ class PythonListener(object):
         self.gateway = gateway
         self.policy = policy
         self.replay_buffer = replay_buffer
+        self.validation_replay_buffer = ReplayBuffer(args, is_valid = True)
         self.game_count = 0
 
     def is_valid(self):
-        if self.game_count % 10 == 0:
+        if self.game_count % self.args.save_interval == 0:
             return True
         else:
             return False
@@ -86,6 +88,10 @@ class PythonListener(object):
                 print("\tsampling...")
                 samples = self.replay_buffer.sample(self.args.batch_size)
                 self.policy.learn(samples)
+        else:
+            print("\t adding to validation replay buffer...")
+            self.validation_replay_buffer.add(state, action, rows_cleared, is_end)
+
 
         # run simulation step
         print("\t calling java with action", action)
@@ -220,13 +226,17 @@ class Policy:
         self.logger.add_loss(loss.data.numpy().item())
         if len(self.logger.loss_list) % 10 == 0:
             self.logger.plot_loss()
+            self.logger.plot_reward()
 
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
 
     def save_params(self):
-        torch.save(self.q_func.state_dict(), os.path.join(self.args.save_dir, "mymodel"))
+        torch.save(self.q_func.state_dict(), os.path.join(self.args.save_dir, "mymodel.pth"))
+
+    def load_params(self):
+        self.q_func.load_state_dict(torch.load(os.path.join(self.args.save_dir, "mymodel.pth")))
 
 
 class Logger:
@@ -234,14 +244,19 @@ class Logger:
         self.args = args
         self.loss_list = []
         self.reward_list = []
-        self.loss_figure = plt.figure("loss")
-        self.reward_figure = plt.figure("reward")
+        self.reward_validation_list = []
+        # self.loss_figure = plt.figure("loss")
+        # self.reward_figure = plt.figure("reward")
+        # self.reward_validation_figure = plt.figure("validation reward")
 
     def add_loss(self, loss):
         self.loss_list.append(loss)
 
-    def add_reward(self, reward):
-        self.reward_list.append(reward)
+    def add_reward(self, reward, is_valid = False):
+        if is_valid:
+            self.reward_validation_list.append(reward)
+        else:
+            self.reward_list.append(reward)
 
     def plot_loss(self):
         plt.figure('loss')
@@ -253,9 +268,12 @@ class Logger:
         plt.plot(self.reward_list)
         plt.savefig(os.path.join(self.args.save_dir, 'reward.png'))
 
+        plt.figure('validation reward')
+        plt.plot(self.reward_validation_list)
+        plt.savefig(os.path.join(self.args.save_dir, 'validation_reward.png'))
 
 class ReplayBuffer:
-    def __init__(self, args):
+    def __init__(self, args, is_valid = False):
         self.args = args
         self.state_list = []
         self.action_list = []
@@ -266,6 +284,7 @@ class ReplayBuffer:
         self.valid_idx_list = []
         self.start_index = 0
         self.prev_end = -1
+        self.is_valid = is_valid
 
     def rel_index(self, index):
         return index - self.start_index
@@ -291,7 +310,7 @@ class ReplayBuffer:
         # cacluate accumulative reward
         if is_end:
             reward_sum = sum(self.reward_list[self.rel_index(self.prev_end) + 1: self.rel_index(self.count)])
-            self.args.logger.add_reward(reward_sum)
+            self.args.logger.add_reward(reward_sum, self.is_valid)
             self.prev_end = self.count
 
         # keep replay buffer udner capacity
