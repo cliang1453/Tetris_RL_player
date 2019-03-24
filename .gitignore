@@ -1,2 +1,3 @@
 .idea/
-src/RL/log
+src/RL/log/
+*.png

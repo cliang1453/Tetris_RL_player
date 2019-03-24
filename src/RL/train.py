@@ -47,7 +47,7 @@ class PythonListener(object):
         self.gateway = gateway
         self.policy = policy
         self.replay_buffer = replay_buffer
-        self.validation_replay_buffer = ReplayBuffer(args, is_valid = True)
+        self.validation_replay_buffer = ReplayBuffer(args, is_valid=True)
         self.game_count = 0
 
     def is_valid(self):
@@ -91,7 +91,6 @@ class PythonListener(object):
         else:
             print("\t adding to validation replay buffer...")
             self.validation_replay_buffer.add(state, action, rows_cleared, is_end)
-
 
         # run simulation step
         print("\t calling java with action", action)
@@ -252,7 +251,7 @@ class Logger:
     def add_loss(self, loss):
         self.loss_list.append(loss)
 
-    def add_reward(self, reward, is_valid = False):
+    def add_reward(self, reward, is_valid=False):
         if is_valid:
             self.reward_validation_list.append(reward)
         else:
@@ -272,8 +271,9 @@ class Logger:
         plt.plot(self.reward_validation_list)
         plt.savefig(os.path.join(self.args.save_dir, 'validation_reward.png'))
 
+
 class ReplayBuffer:
-    def __init__(self, args, is_valid = False):
+    def __init__(self, args, is_valid=False):
         self.args = args
         self.state_list = []
         self.action_list = []
@@ -320,7 +320,7 @@ class ReplayBuffer:
             self.cleared_list = self.cleared_list[100:]
             self.is_end_list = self.is_end_list[100:]
             self.start_index += 100
-            idx = np.argmax(self.valid_idx_list >= self.start_index)
+            idx = np.argmax(np.array(self.valid_idx_list) >= self.start_index)
             self.valid_idx_list = self.valid_idx_list[idx:]
 
         self.count += 1
@@ -348,7 +348,6 @@ class ReplayBuffer:
         else:
             reward = 1 + (self.cleared_list[i] - self.cleared_list[i - 1]) * 5
         return reward
-
 
 
 def calculate_reward(state, next_state, is_end):
@@ -406,7 +405,24 @@ def test_policy():
             policy.learn(samples)
 
 
+def test_replay_buffer():
+    args = parse_args()
+    args.logger = Logger(args)
+    replay_buffer = ReplayBuffer(args)
+
+    for game in range(100):
+        for t in range(50):
+            field = np.zeros((rows, cols))
+            state = [field, 0]
+            action = [0, 0]
+            rows_cleared = 0
+            is_end = True if t==49 else False
+            replay_buffer.add(state, action, rows_cleared, is_end)
+
+
+
 if __name__ == "__main__":
     # run_heuristic()
     main()
     # test_policy()
+    # test_replay_buffer()
