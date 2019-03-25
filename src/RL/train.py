@@ -23,13 +23,13 @@ def parse_args():
     parser.add_argument("--alpha", type=float, default=0.95, help="alpha")
     parser.add_argument("--eps", type=float, default=0.01, help="eps")
     parser.add_argument("--epsilon-g", type=float, default=0.1, help="epsilon greedy")
-    parser.add_argument("--num-episodes", type=int, default=1000, help="number of episodes")
+    parser.add_argument("--num-episodes", type=int, default=100000, help="number of episodes")
     parser.add_argument("--num-games", type=int, default=10, help="number of games")
     parser.add_argument("--batch-size", type=int, default=32, help="number of games")
     parser.add_argument("--save-dir", type=str, default="log", help="directory to save policy and plots")
     parser.add_argument("--save-interval", type=int, default=10, help="interval to save validation plots")
     parser.add_argument("--gamma", type=float, default=0.99, help="discount factor")
-    parser.add_argument("--max-capacity", type=int, default=1000, help="maximum capacity of replay buffer")  # TODO: later change to 100000
+    parser.add_argument("--max-capacity", type=int, default=50000, help="maximum capacity of replay buffer")  # TODO: later change to 100000
     parser.add_argument("--learning-start", type=int, default=100, help="learning start after number of episodes")
     parser.add_argument("--num_collect_iter", type=int, default=100, help="number of iteration to collect data per one learning step")
     parser.add_argument("--num_target_update_iter", type=int, default=1, help="number of iterations to update target Q")
