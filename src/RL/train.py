@@ -32,9 +32,10 @@ def parse_args():
     parser.add_argument("--max-capacity", type=int, default=1000, help="maximum capacity of replay buffer")  # TODO: later change to 100000
     parser.add_argument("--learning-start", type=int, default=100, help="learning start after number of episodes")
     parser.add_argument("--num_collect_iter", type=int, default=100, help="number of iteration to collect data per one learning step")
-    parser.add_argument("--num_target_update_iter", type=int, default=100, help="number of iterations to update target Q")
-    parser.add_argument("--use-cuda", type=bool, default=False, help="use cuda for training")
+    parser.add_argument("--num_target_update_iter", type=int, default=1, help="number of iterations to update target Q")
+    # parser.add_argument("--use-cuda", type=bool, default=False, help="use cuda for training")
     args = parser.parse_args()
+
     return args
 
 
@@ -122,18 +123,19 @@ class Policy:
     def __init__(self, args):
         self.args = args
         self.logger = args.logger
-        self.q_func = QFunc(args)
-        self.target_q_func = QFunc(args)
+        dtype = torch.cuda.FloatTensor if torch.cuda.is_available() else torch.FloatTensor
+        self.q_func = QFunc(args).type(dtype)
+        self.target_q_func = QFunc(args).type(dtype)
         self.optimizer = optim.RMSprop(self.q_func.parameters(), lr=args.lr, alpha=args.alpha, eps=args.eps)
 
     def to_variable(self, array_in):
-        if self.args.use_cuda:
-            return Variable(torch.from_numpy(array_in)).float().to_cuda()
+        if torch.cuda.is_available():
+            return Variable(torch.from_numpy(array_in)).float().cuda()
         else:
             return Variable(torch.from_numpy(array_in)).float()
 
     def get_data(self, var_in):
-        if self.args.use_cuda:
+        if torch.cuda.is_available():
             return var_in.data.cpu().numpy()
         else:
             return var_in.data.numpy()
