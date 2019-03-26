@@ -23,6 +23,17 @@ def get_filled_rows(board):
     return filled_rows
 
 
+def get_feature_from_board(board):
+    top_board_new = get_top(board)
+    aggregated_height = sum(top_board_new)
+    completed_lines = (len(get_filled_rows(board))) ** 2
+    bumpiness = sum(abs(top_board_new[:-1] - top_board_new[1:]))
+    bumpiness_squared = sum((top_board_new[:-1] - top_board_new[1:]) ** 2)
+    holes = aggregated_height - np.sum(board)
+    depth = sum(top_board_new - np.argmin(board, axis=0))
+    return [aggregated_height, completed_lines, holes, bumpiness, bumpiness_squared, depth]
+
+
 def simulate_drop(state, action, in_game=False, get_feature=False):
     board, idx = state
     ori, col_idx = action
@@ -64,14 +75,10 @@ def simulate_drop(state, action, in_game=False, get_feature=False):
         return board_sim, game_end, cleared
 
     elif get_feature:
-        aggregated_height = sum(top_board)
-        completed_lines = len(get_filled_rows(board_sim))
-        bumpiness = sum(abs(top_board[:-1] - top_board[1:]))
-        holes = aggregated_height - sum(board_sim)
-        features = [aggregated_height, completed_lines, bumpiness, holes]
+        features = get_feature_from_board(board_sim)
         return board_sim, features
     else:
-        return board_sim
+        return board_sim, None
 
 
 class TetrisGame:
@@ -117,6 +124,17 @@ class TetrisGame:
         plt.pause(0.05)
 
 
+def calc_reward(rows_cleared_prev, rows_cleared, is_end, reward_type="all"):
+    if reward_type == "cleared":
+        return (rows_cleared - rows_cleared_prev) * 5
+    else:
+        if is_end:
+            reward = -10
+        else:
+            reward = 1 + (rows_cleared - rows_cleared_prev) * 5
+        return reward
+
+
 def test_tetris():
     env = TetrisGame(do_visualize=False)
     next_piece, field, rows_cleared, is_end = env.reset()
@@ -138,13 +156,37 @@ def test_tetris():
         print('action', action)
 
 
-def calc_reward(rows_cleared_prev, rows_cleared, is_end):
-    if is_end:
-        reward = -10
-    else:
-        reward = 1 + (rows_cleared - rows_cleared_prev) * 5
-    return reward
+def test_feature():
+    board = np.zeros((rows + 4, cols))
+    board[0, :] = 1
+    print(board[::-1])
+    features = get_feature_from_board(board)
+    print("features", features)
+
+    print()
+    print("=" * 100)
+    board[1, :] = 1
+    print(board[::-1])
+    features = get_feature_from_board(board)
+    print("features", features)
+
+    print()
+    print("=" * 100)
+    board[2, 2:4] = 1
+    board[3, 2] = 1
+    print(board[::-1])
+    features = get_feature_from_board(board)
+    print("features", features)
+
+    print()
+    print("=" * 100)
+    board[10, 2] = 1
+    board[10, 4] = 1
+    print(board[::-1])
+    features = get_feature_from_board(board)
+    print("features", features)
 
 
 if __name__ == "__main__":
-    test_tetris()
+    # test_tetris()
+    test_feature()

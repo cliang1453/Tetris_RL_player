@@ -8,7 +8,7 @@ from py4j.java_gateway import JavaGateway, CallbackServerParameters
 from params import *
 from environment import *
 import math
-from model import QFunc
+from model import *
 import torch
 import torch.optim as optim
 from torch.autograd import Variable
@@ -30,10 +30,10 @@ def parse_args():
     parser.add_argument("--save-interval", type=int, default=10, help="interval to save validation plots")
     parser.add_argument("--gamma", type=float, default=0.99, help="discount factor")
     parser.add_argument("--max-capacity", type=int, default=50000, help="maximum capacity of replay buffer")
-    parser.add_argument("--learning-start", type=int, default=100, help="learning start after number of episodes")
-    parser.add_argument("--num_collect_iter", type=int, default=100, help="number of iteration to collect data per one learning step")
+    parser.add_argument("--learning-start", type=int, default=10, help="learning start after number of episodes")
     parser.add_argument("--num_target_update_iter", type=int, default=1, help="number of iterations to update target Q")
-    # parser.add_argument("--use-cuda", type=bool, default=False, help="use cuda for training")
+    parser.add_argument("--features", type=str, default="all", help="options are cnn, all, magic")
+    parser.add_argument("--reward-type", type=str, default="all", help="options are all, cleared")
     args = parser.parse_args()
 
     return args
@@ -45,69 +45,25 @@ state: [ndarray(rows * cols), next_piecee]
 """
 
 
-class PythonListener(object):
+class MagicPolicy:
+    def __init__(self):
+        self.magic_numbers = np.array([-0.510066, 0.760666, -0.35663, -0.184483])
 
-    def __init__(self, args, gateway, policy, replay_buffer):
-        self.args = args
-        self.gateway = gateway
-        self.policy = policy
-        self.replay_buffer = replay_buffer
-        self.validation_replay_buffer = ReplayBuffer(args, is_valid=True)
-        self.game_count = 0
-
-    def is_valid(self):
-        if self.game_count % self.args.save_interval == 0:
-            return True
-        else:
-            return False
-
-    def notify(self, next_piece, field, rows_cleared, is_end):
-        print(colored("=" * 40 + str(self.game_count) + "=" * 40, 'red'))
-        # format state
-        print("\tnext_piece\t", next_piece)
-        print("\tis_end\t", is_end)
-        field = list(field)
-        field = [list(row) for row in field]
-        field = field + [[0] * cols for _ in range(4)]  # add 4 rows on top
-        field = np.array(field)
-        print("\tfield", field[::-1])
-        field = field > 0
-        state = [field, next_piece]
-
-        # select action
-        if is_end:
-            action = [0, 0]
-        else:
-            action = self.policy.take_action(state, is_valid=self.is_valid())
-
-        if not self.is_valid():
-            # store transition
-            print("\t adding to replay buffer...")
-            self.replay_buffer.add(state, action, rows_cleared, is_end)
-
-            if self.replay_buffer.get_size() % 20 == 0:
-                self.replay_buffer.visualize_replaybuffer()
-
-            # sample and update
-            if len(self.replay_buffer.valid_idx_list) > self.args.batch_size:
-                print("\tsampling...")
-                samples = self.replay_buffer.sample(self.args.batch_size)
-                self.policy.learn(samples)
-        else:
-            print("\t adding to validation replay buffer...")
-            self.validation_replay_buffer.add(state, action, rows_cleared, is_end)
-
-        # run simulation step
-        print("\t calling java with action", action)
-        if is_end:
-            self.game_count += 1
-            if self.is_valid():
-                self.policy.save_params()
-
-        self.gateway.entry_point.takeAction(int(action[0]), int(action[1]))
-
-    class Java:
-        implements = ["org.py4j.smallbench.BenchListener"]
+    def take_action(self, state, strategy="epsilon_greedy"):
+        action_space = get_action_space(state[1])
+        values = []
+        features_list = []
+        for action in action_space:
+            board_sim, features = simulate_drop(state, action, get_feature=True)
+            features = np.array(features)
+            value = np.dot(self.magic_numbers, features)
+            features_list.append(features)
+            values.append(value)
+        best_index = np.argmax(np.array(values))
+        # print(values)
+        # print(best_index)
+        # print(features_list[best_index])
+        return action_space[best_index]
 
 
 class HeuristicPolicy:
@@ -124,8 +80,15 @@ class Policy:
         self.args = args
         self.logger = args.logger
         dtype = torch.cuda.FloatTensor if torch.cuda.is_available() else torch.FloatTensor
-        self.q_func = QFunc(args).type(dtype)
-        self.target_q_func = QFunc(args).type(dtype)
+        if self.args.features == "cnn":
+            q_function = QFunc
+        elif self.args.features == "magic":
+            q_function = QFuncFeature
+        else:
+            q_function = QFuncAll
+
+        self.q_func = q_function(args).type(dtype)
+        self.target_q_func = q_function(args).type(dtype)
         self.optimizer = optim.RMSprop(self.q_func.parameters(), lr=args.lr, alpha=args.alpha, eps=args.eps)
 
     def to_variable(self, array_in):
@@ -159,13 +122,29 @@ class Policy:
         if not diff_states:
             states = [states] * len(actions)
         state_sim_list = []
+        feature_list = []
+
+        get_feature = (self.args.features == "all") or (self.args.features == "magic")
+
         for state, action in zip(states, actions):
-            state_sim = simulate_drop(state, action)
+            state_sim, feature = simulate_drop(state, action, get_feature=get_feature)
             state_sim = np.expand_dims(state_sim, axis=0).astype(float)
             state_sim_list.append(state_sim)
+            feature_list.append(feature)
+
         states_sim = np.stack(state_sim_list, axis=0)
         states_sim_var = self.to_variable(states_sim)
-        Qs = q_func(states_sim_var)
+
+        if get_feature:
+            features = np.stack(feature_list, axis=0)
+            features_var = self.to_variable(features)
+
+        if self.args.features == "cnn":
+            Qs = q_func(states_sim_var)
+        elif self.args.features == "all":
+            Qs = q_func(states_sim_var, features_var)
+        else:
+            Qs = q_func(features_var)
         return Qs
 
     def learn(self, samples):
@@ -204,7 +183,10 @@ class Policy:
         torch.save(self.q_func.state_dict(), os.path.join(self.args.save_dir, "mymodel.pth"))
 
     def load_params(self):
-        self.q_func.load_state_dict(torch.load(os.path.join(self.args.save_dir, "mymodel.pth")))
+        if torch.cuda.is_available():
+            self.q_func.load_state_dict(torch.load(os.path.join(self.args.save_dir, "mymodel.pth"), map_location='gpu'))
+        else:
+            self.q_func.load_state_dict(torch.load(os.path.join(self.args.save_dir, "mymodel.pth"), map_location='cpu'))
 
 
 class Logger:
@@ -286,13 +268,6 @@ class ReplayBuffer:
         print("sampled_rewards", sampled_rewards)
 
 
-def collect_data(args, policy, replay_buffer, num_games=1):
-    gateway = JavaGateway(callback_server_parameters=CallbackServerParameters())
-    listener = PythonListener(args, gateway, policy, replay_buffer)
-    gateway.entry_point.registerBenchListener(listener)
-    gateway.entry_point.startGames(1, num_games)
-
-
 def main():
     # args = parse_args()
     # args.logger = Logger(args)
@@ -302,11 +277,11 @@ def main():
     train()
 
 
-def run_heuristic():
-    args = parse_args()
-    policy = HeuristicPolicy(args)
-    replay_buffer = ReplayBuffer(args)
-    collect_data(args, policy, replay_buffer, num_games=args.num_games)
+# def run_heuristic():
+#     args = parse_args()
+#     policy = HeuristicPolicy(args)
+#     replay_buffer = ReplayBuffer(args)
+#     collect_data(args, policy, replay_buffer, num_games=args.num_games)
 
 
 def test_policy():
@@ -383,7 +358,7 @@ def train():
                 rows_cleared_prev = env.rows_cleared
                 action = policy.take_action(state, strategy)
                 next_piece, field, rows_cleared, is_end = env.step(action)
-                reward = calc_reward(rows_cleared_prev, rows_cleared, is_end)
+                reward = calc_reward(rows_cleared_prev, rows_cleared, is_end, reward_type=args.reward_type)
                 reward_accum += reward
                 if strategy != "validation":
                     # store transition
@@ -421,10 +396,11 @@ def train():
 def do_validation():
     args = parse_args()
     args.logger = Logger(args)
-    policy = Policy(args)
+    policy = MagicPolicy()
+    # policy = Policy(args)
+    # policy.load_params()
     replay_buffer = ReplayBuffer(args)
-    env = TetrisGame(args, do_visualize=True)
-    policy.load_params()
+    env = TetrisGame(args, do_visualize=False)
 
     env.reset()
     reward_accum = 0
@@ -436,12 +412,14 @@ def do_validation():
         next_piece, field, rows_cleared, is_end = env.step(action)
         reward = calc_reward(rows_cleared_prev, rows_cleared, is_end)
         reward_accum += reward
+        print(rows_cleared)
         if is_end:
             break
 
+
 if __name__ == "__main__":
     # run_heuristic()
-    # main()
+    main()
     # test_policy()
     # test_replay_buffer()
-    do_validation()
+    # do_validation()
