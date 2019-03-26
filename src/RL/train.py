@@ -14,6 +14,7 @@ import torch.optim as optim
 from torch.autograd import Variable
 from termcolor import colored
 from itertools import count
+import pickle
 
 
 def parse_args():
@@ -228,6 +229,16 @@ class Logger:
         plt.plot(self.q_list)
         plt.savefig(os.path.join(self.args.save_dir, 'q.png'))
 
+    def log_all(self):
+        with open(os.path.join(self.args.save_dir, 'q.pkl'), 'wb') as f:
+            pickle.dump(self.q_list, f)
+        with open(os.path.join(self.args.save_dir, 'validation_reward.pkl'), 'wb') as f:
+            pickle.dump(self.reward_validation_list, f)
+        with open(os.path.join(self.args.save_dir, 'reward.pkl'), 'wb') as f:
+            pickle.dump(self.reward_list, f)
+        with open(os.path.join(self.args.save_dir, 'loss.pkl'), 'wb') as f:
+            pickle.dump(self.loss_list, f)
+
 
 class ReplayBuffer:
     def __init__(self, args):
@@ -333,6 +344,7 @@ def train():
     policy = Policy(args)
     replay_buffer = ReplayBuffer(args)
     env = TetrisGame(args)
+    max_cleared = 0
 
     for episode in range(args.num_episodes):
 
@@ -350,7 +362,7 @@ def train():
         # collect data
         reward_accum_list = []
         for game in range(args.num_games):
-            print(colored("=" * 40 + "Episode" + str(episode) + " Game " + str(game) + " " + strategy + "=" * 40, 'red'))
+            print(colored("=" * 20 + "Episode" + str(episode) + " Game " + str(game) + " " + strategy + "=" * 20 + str(max_cleared), 'red'))
             env.reset()
             reward_accum = 0
             for t in count():
@@ -365,6 +377,7 @@ def train():
                     replay_buffer.add(state, action, reward, is_end)
 
                 if is_end:
+                    max_cleared = max(max_cleared, rows_cleared)
                     reward_accum_list.append(reward_accum)
                     break
         if strategy != "random":
@@ -382,10 +395,12 @@ def train():
 
         # make plot
         if strategy != "random":
-            if len(args.logger.loss_list) % 10 == 0:
+            if len(args.logger.loss_list) % 100 == 0:
                 args.logger.plot_loss()
                 args.logger.plot_reward()
                 args.logger.plot_q()
+                args.logger.log_all()
+
 
         # update target q
         if (strategy != "random") and (episode % args.num_target_update_iter == 0):
