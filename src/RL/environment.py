@@ -15,7 +15,15 @@ def get_top(board):
     return top_board
 
 
-def simulate_drop(state, action, in_game=False):
+def get_filled_rows(board):
+    filled_rows = []
+    for i in range(rows):
+        if np.all(board[i]):
+            filled_rows.append(i)
+    return filled_rows
+
+
+def simulate_drop(state, action, in_game=False, get_feature=False):
     board, idx = state
     ori, col_idx = action
 
@@ -48,16 +56,20 @@ def simulate_drop(state, action, in_game=False):
         # remove filled rows
         cleared = 0
         if not game_end:
-            filled_rows = []
-            for i in range(rows):
-                if np.all(board_sim[i]):
-                    filled_rows.append(i)
-
+            filled_rows = get_filled_rows(board_sim)
             cleared = len(filled_rows)
             board_sim = np.delete(board_sim, filled_rows, axis=0)
             board_sim = np.append(board_sim, np.zeros((cleared, cols)), axis=0)
 
         return board_sim, game_end, cleared
+
+    elif get_feature:
+        aggregated_height = sum(top_board)
+        completed_lines = len(get_filled_rows(board_sim))
+        bumpiness = sum(abs(top_board[:-1] - top_board[1:]))
+        holes = aggregated_height - sum(board_sim)
+        features = [aggregated_height, completed_lines, bumpiness, holes]
+        return board_sim, features
     else:
         return board_sim
 

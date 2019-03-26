@@ -29,7 +29,7 @@ def parse_args():
     parser.add_argument("--save-dir", type=str, default="log", help="directory to save policy and plots")
     parser.add_argument("--save-interval", type=int, default=10, help="interval to save validation plots")
     parser.add_argument("--gamma", type=float, default=0.99, help="discount factor")
-    parser.add_argument("--max-capacity", type=int, default=50000, help="maximum capacity of replay buffer")  # TODO: later change to 100000
+    parser.add_argument("--max-capacity", type=int, default=50000, help="maximum capacity of replay buffer")
     parser.add_argument("--learning-start", type=int, default=100, help="learning start after number of episodes")
     parser.add_argument("--num_collect_iter", type=int, default=100, help="number of iteration to collect data per one learning step")
     parser.add_argument("--num_target_update_iter", type=int, default=1, help="number of iterations to update target Q")
@@ -418,8 +418,30 @@ def train():
             policy.update_target_q()
 
 
+def do_validation():
+    args = parse_args()
+    args.logger = Logger(args)
+    policy = Policy(args)
+    replay_buffer = ReplayBuffer(args)
+    env = TetrisGame(args, do_visualize=True)
+    policy.load_params()
+
+    env.reset()
+    reward_accum = 0
+    strategy = "validation"
+    for t in count():
+        state = [env.field, env.next_piece]
+        rows_cleared_prev = env.rows_cleared
+        action = policy.take_action(state, strategy)
+        next_piece, field, rows_cleared, is_end = env.step(action)
+        reward = calc_reward(rows_cleared_prev, rows_cleared, is_end)
+        reward_accum += reward
+        if is_end:
+            break
+
 if __name__ == "__main__":
     # run_heuristic()
-    main()
+    # main()
     # test_policy()
     # test_replay_buffer()
+    do_validation()
