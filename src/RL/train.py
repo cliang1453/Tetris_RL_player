@@ -3,8 +3,7 @@ import argparse
 import numpy as np
 import os
 import random
-import importlib
-from py4j.java_gateway import JavaGateway, CallbackServerParameters
+
 from params import *
 from environment import *
 import math
@@ -35,6 +34,7 @@ def parse_args():
     parser.add_argument("--num_target_update_iter", type=int, default=1, help="number of iterations to update target Q")
     parser.add_argument("--features", type=str, default="all", help="options are cnn, all, magic")
     parser.add_argument("--reward-type", type=str, default="all", help="options are all, cleared")
+    parser.add_argument("--use-heuristic", action="store_true", help="using heuristic to collect data")
     args = parser.parse_args()
 
     return args
@@ -56,7 +56,7 @@ class MagicPolicy:
         features_list = []
         for action in action_space:
             board_sim, features = simulate_drop(state, action, get_feature=True)
-            features = np.array(features)
+            features = np.array(features)[:4]
             value = np.dot(self.magic_numbers, features)
             features_list.append(features)
             values.append(value)
@@ -91,6 +91,8 @@ class Policy:
         self.q_func = q_function(args).type(dtype)
         self.target_q_func = q_function(args).type(dtype)
         self.optimizer = optim.RMSprop(self.q_func.parameters(), lr=args.lr, alpha=args.alpha, eps=args.eps)
+        if args.use_heuristic:
+            self.heuristic = MagicPolicy()
 
     def to_variable(self, array_in):
         if torch.cuda.is_available():
@@ -197,6 +199,7 @@ class Logger:
         self.reward_list = []
         self.reward_validation_list = []
         self.q_list = []
+        self.cleared_list = []
 
     def add_loss(self, loss):
         self.loss_list.append(loss)
@@ -209,6 +212,9 @@ class Logger:
 
     def add_q(self, q):
         self.q_list.append(q)
+
+    def add_cleared(self, cleared):
+        self.cleared_list.append(cleared)
 
     def plot_loss(self):
         plt.figure('loss')
@@ -238,6 +244,8 @@ class Logger:
             pickle.dump(self.reward_list, f)
         with open(os.path.join(self.args.save_dir, 'loss.pkl'), 'wb') as f:
             pickle.dump(self.loss_list, f)
+        with open(os.path.join(self.args.save_dir, 'cleared.pkl'), 'wb') as f:
+            pickle.dump(self.cleared_list, f)
 
 
 class ReplayBuffer:
@@ -288,13 +296,6 @@ def main():
     train()
 
 
-# def run_heuristic():
-#     args = parse_args()
-#     policy = HeuristicPolicy(args)
-#     replay_buffer = ReplayBuffer(args)
-#     collect_data(args, policy, replay_buffer, num_games=args.num_games)
-
-
 def test_policy():
     args = parse_args()
     args.logger = Logger(args)
@@ -302,7 +303,6 @@ def test_policy():
     replay_buffer = ReplayBuffer(args)
 
     for i in range(2):
-
         # create some sample state, next piece
         next_piece = random.randint(0, 6)
         field = np.zeros((rows + 4, cols))
@@ -316,11 +316,6 @@ def test_policy():
 
         # store transition
         replay_buffer.add(state, action, rows_cleared, is_end)
-
-        # sample and update
-        if len(replay_buffer.valid_idx_list) > args.batch_size:
-            samples = replay_buffer.sample(args.batch_size)
-            policy.learn(samples)
 
 
 def test_replay_buffer():
@@ -361,8 +356,8 @@ def train():
 
         # collect data
         reward_accum_list = []
+        rows_cleared_list = []
         for game in range(args.num_games):
-            print(colored("=" * 20 + "Episode" + str(episode) + " Game " + str(game) + " " + strategy + "=" * 20 + str(max_cleared), 'red'))
             env.reset()
             reward_accum = 0
             for t in count():
@@ -378,10 +373,16 @@ def train():
 
                 if is_end:
                     max_cleared = max(max_cleared, rows_cleared)
+                    print(colored(
+                        "=" * 20 + "Episode" + str(episode) + " Game " + str(game) + " " + strategy + "=" * 20 + str(rows_cleared) + "/" + str(max_cleared),
+                        'red'))
+
                     reward_accum_list.append(reward_accum)
+                    rows_cleared_list.append(rows_cleared)
                     break
         if strategy != "random":
             args.logger.add_reward(np.average(reward_accum_list), is_valid=(strategy == "validation"))
+            args.logger.add_cleared(np.average(reward_accum_list))
 
         # learn
         if (episode >= args.learning_start) and (replay_buffer.get_size() > args.batch_size) and (strategy == "epsilon_greedy"):
@@ -400,7 +401,6 @@ def train():
                 args.logger.plot_reward()
                 args.logger.plot_q()
                 args.logger.log_all()
-
 
         # update target q
         if (strategy != "random") and (episode % args.num_target_update_iter == 0):
