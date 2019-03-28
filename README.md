@@ -2,12 +2,24 @@
 
 code written by Chen Liang and Yetong Zhang
 
-To run the code, first install the requirements by running "pip3 install -r requirements.txt" in the RL folder.
+To run the code, first install the requirements by running 
 
-Then in folder "java", run "./gradlew run"
+::
+	cd RL
+	pip3 install -r requirements.txt
 
-In folder RL, run "python3 run_java.py"
+To run Java server
 
-to set the experiment to run, use "python3 run_java.py --experiment exp1", you can replace exp1 with the name of the experiment
+::
+    cd java
+    ./gradlew run
 
+To run validation experiment using trained model
 
+::
+	cd RL
+	python3 run_java.py --experiment [exp1] # you can replace exp1 with the name of the experiment
+
+# Reference
+
+Python Java Interface: https://github.com/bartdag/py4j-smallbench-example
