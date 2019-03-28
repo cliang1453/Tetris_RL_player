@@ -29,11 +29,12 @@ def parse_args():
     parser.add_argument("--save-interval", type=int, default=10, help="interval to save validation plots")
     parser.add_argument("--gamma", type=float, default=0.99, help="discount factor")
     parser.add_argument("--max-capacity", type=int, default=50000, help="maximum capacity of replay buffer")
-    parser.add_argument("--learning-start", type=int, default=10, help="learning start after number of episodes")
+    parser.add_argument("--learning-start", type=int, default=100, help="learning start after number of episodes")
     parser.add_argument("--num_target_update_iter", type=int, default=1, help="number of iterations to update target Q")
     parser.add_argument("--features", type=str, default="all", help="options are cnn, all, magic")
     parser.add_argument("--reward-type", type=str, default="all", help="options are all, cleared")
     parser.add_argument("--use-heuristic", action="store_true", help="using heuristic to collect data")
+    parser.add_argument("--expected-q", action="store_true", help="using expectation to calculate target q")
     args = parser.parse_args()
 
     return args
@@ -46,6 +47,7 @@ exp3: --alg DQN --features cnn --reward-type cleared
 exp4: --alg DQN --features magic --reward-type all --lr 0.001
 exp5: --alg DQN --features all --reward-type all
 exp6: --alg DQN --features cnn --reward-type all --use-heuristic
+exp7: --alg DQN --features cnn --reward-type all --expected-q
 """
 
 """
@@ -157,17 +159,37 @@ class Policy:
         # compute ys
         states, actions, next_states, rewards, is_ends = samples
         ys = []
-        for i in range(self.args.batch_size):
-            if is_ends[i]:
-                ys.append(rewards[i])
-            else:
-                action_space = get_action_space(next_states[i][1])
-                if self.args.alg == "DQN":
-                    qs = self.get_Qs(next_states[i], action_space, q_func=self.target_q_func).detach()
+
+        if self.args.expected_q:
+            for next_piece in range(num_pieces):
+                ys_piece = []
+                for i in range(self.args.batch_size):
+                    if is_ends[i]:
+                        ys_piece.append(rewards[i])
+                    else:
+                        action_space = get_action_space(next_piece)
+                        if self.args.alg == "DQN":
+                            qs = self.get_Qs([next_states[i][0], next_piece], action_space, q_func=self.target_q_func).detach()
+                        else:
+                            qs = self.get_Qs([next_states[i][0], next_piece], action_space, q_func=self.q_func).detach()
+                        max_q = np.asscalar(np.amax(self.get_data(qs)))
+                        ys_piece.append(rewards[i] + self.args.gamma * max_q)
+                ys.append(ys_piece)
+            ys = np.array(ys)
+            ys = np.average(ys, axis=0)
+
+        else:
+            for i in range(self.args.batch_size):
+                if is_ends[i]:
+                    ys.append(rewards[i])
                 else:
-                    qs = self.get_Qs(next_states[i], action_space, q_func=self.q_func).detach()
-                max_q = np.asscalar(np.amax(self.get_data(qs)))
-                ys.append(rewards[i] + self.args.gamma * max_q)
+                    action_space = get_action_space(next_states[i][1])
+                    if self.args.alg == "DQN":
+                        qs = self.get_Qs(next_states[i], action_space, q_func=self.target_q_func).detach()
+                    else:
+                        qs = self.get_Qs(next_states[i], action_space, q_func=self.q_func).detach()
+                    max_q = np.asscalar(np.amax(self.get_data(qs)))
+                    ys.append(rewards[i] + self.args.gamma * max_q)
 
         # compute Q
         loss = 0
