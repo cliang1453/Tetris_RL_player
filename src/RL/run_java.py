@@ -31,7 +31,7 @@ class PythonListener(object):
         if is_end:
             action = [0, 0]
         else:
-            action = self.policy.take_action(state)
+            action = self.policy.take_action(state, strategy="validation")
 
         self.gateway.entry_point.takeAction(int(action[0]), int(action[1]))
 

@@ -37,7 +37,37 @@ def parse_args():
     parser.add_argument("--expected-q", action="store_true", help="using expectation to calculate target q")
     parser.add_argument("--experiment", type=str, default="exp3", help="choose experiment to load")
     args = parser.parse_args()
-
+    if args.experiment == "exp1":
+        args.alg = "Q_learning"
+        args.features = "cnn"
+        args.reward_type = "all"
+    if args.experiment == "exp2":
+        args.alg = "DQN"
+        args.features = "cnn"
+        args.reward_type = "all"
+    if args.experiment == "exp3":
+        args.alg = "DQN"
+        args.features = "cnn"
+        args.reward_type = "cleared"
+    if args.experiment == "exp4":
+        args.alg = "DQN"
+        args.features = "magic"
+        args.reward_type = "all"
+        args.lr = 0.001
+    if args.experiment == "exp5":
+        args.alg = "DQN"
+        args.features = "all"
+        args.reward_type = "all"
+    if args.experiment == "exp6":
+        args.alg = "DQN"
+        args.features = "cnn"
+        args.reward_type = "all"
+        args.use_heuristic = True
+    if args.experiment == "exp7":
+        args.alg = "DQN"
+        args.features = "cnn"
+        args.reward_type = "all"
+        args.expected_q = True
     return args
 
 
