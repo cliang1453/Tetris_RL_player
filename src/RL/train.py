@@ -6,7 +6,6 @@ import random
 
 from params import *
 from environment import *
-import math
 from model import *
 import torch
 import torch.optim as optim
@@ -18,7 +17,7 @@ import pickle
 
 def parse_args():
     parser = argparse.ArgumentParser("RL for Tetris")
-    parser.add_argument("--alg", type=str, default="", help="reinforcement learning algorithm")
+    parser.add_argument("--alg", type=str, default="DQN", help="reinforcement learning algorithm, DQN, Q_learning")
     parser.add_argument("--lr", type=float, default=1e-4, help="learning rate")
     parser.add_argument("--alpha", type=float, default=0.95, help="alpha")
     parser.add_argument("--eps", type=float, default=0.01, help="eps")
@@ -41,17 +40,31 @@ def parse_args():
 
 
 """
+exp1: --alg Q_learning --features cnn --reward-type all
+exp2: --alg DQN --features cnn --reward-type all
+exp3: --alg DQN --features cnn --reward-type cleared
+exp4: --alg DQN --features magic --reward-type all --lr 0.0001
+exp5: --alg DQN --features all --reward-type all
+exp6: --alg DQN --features cnn --reward-type all --use-heuristic
+"""
+
+"""
 state: [ndarray(rows * cols), next_piecee]
 
 """
 
 
 class MagicPolicy:
-    def __init__(self):
+    def __init__(self, args):
+        self.args = args
         self.magic_numbers = np.array([-0.510066, 0.760666, -0.35663, -0.184483])
 
-    def take_action(self, state, strategy="epsilon_greedy"):
+    def take_action(self, state, strategy="validation"):
         action_space = get_action_space(state[1])
+        if (strategy == "epsilon_greedy" and random.random() < self.args.epsilon_g) or strategy == 'random':
+            action = random.choice(action_space)
+            return action
+
         values = []
         features_list = []
         for action in action_space:
@@ -65,15 +78,6 @@ class MagicPolicy:
         # print(best_index)
         # print(features_list[best_index])
         return action_space[best_index]
-
-
-class HeuristicPolicy:
-    def __init__(self, args):
-        self.args = args
-
-    def take_action(self, state):
-        action = [0, random.randint(1, 5)]
-        return action
 
 
 class Policy:
@@ -91,8 +95,6 @@ class Policy:
         self.q_func = q_function(args).type(dtype)
         self.target_q_func = q_function(args).type(dtype)
         self.optimizer = optim.RMSprop(self.q_func.parameters(), lr=args.lr, alpha=args.alpha, eps=args.eps)
-        if args.use_heuristic:
-            self.heuristic = MagicPolicy()
 
     def to_variable(self, array_in):
         if torch.cuda.is_available():
@@ -110,7 +112,7 @@ class Policy:
         action_space = get_action_space(state[1])
 
         # epsilon greedy
-        if (strategy == "epsilon_greedy" and (random.random() < self.args.epsilon_g)) or strategy == 'random':
+        if (strategy == "epsilon_greedy" and random.random() < self.args.epsilon_g) or strategy == 'random':
             action = random.choice(action_space)
             return action
 
@@ -160,7 +162,10 @@ class Policy:
                 ys.append(rewards[i])
             else:
                 action_space = get_action_space(next_states[i][1])
-                qs = self.get_Qs(next_states[i], action_space, q_func=self.target_q_func).detach()
+                if self.args.alg == "DQN":
+                    qs = self.get_Qs(next_states[i], action_space, q_func=self.target_q_func).detach()
+                else:
+                    qs = self.get_Qs(next_states[i], action_space, q_func=self.q_func).detach()
                 max_q = np.asscalar(np.amax(self.get_data(qs)))
                 ys.append(rewards[i] + self.args.gamma * max_q)
 
@@ -180,7 +185,8 @@ class Policy:
         return self.get_data(loss).item()
 
     def update_target_q(self):
-        self.target_q_func.load_state_dict(self.q_func.state_dict())
+        if self.args.alg == "DQN":
+            self.target_q_func.load_state_dict(self.q_func.state_dict())
 
     def save_params(self):
         torch.save(self.q_func.state_dict(), os.path.join(self.args.save_dir, "mymodel.pth"))
@@ -337,6 +343,8 @@ def train():
     args = parse_args()
     args.logger = Logger(args)
     policy = Policy(args)
+    if args.use_heuristic:
+        heuristic_policy = MagicPolicy(args)
     replay_buffer = ReplayBuffer(args)
     env = TetrisGame(args)
     max_cleared = 0
@@ -363,7 +371,10 @@ def train():
             for t in count():
                 state = [env.field, env.next_piece]
                 rows_cleared_prev = env.rows_cleared
-                action = policy.take_action(state, strategy)
+                if (strategy != "validation") and args.use_heuristic and (game < 2):
+                    action = heuristic_policy.take_action(state, strategy)
+                else:
+                    action = policy.take_action(state, strategy)
                 next_piece, field, rows_cleared, is_end = env.step(action)
                 reward = calc_reward(rows_cleared_prev, rows_cleared, is_end, reward_type=args.reward_type)
                 reward_accum += reward
@@ -411,7 +422,7 @@ def train():
 def do_validation():
     args = parse_args()
     args.logger = Logger(args)
-    policy = MagicPolicy()
+    policy = MagicPolicy(args)
     # policy = Policy(args)
     # policy.load_params()
     replay_buffer = ReplayBuffer(args)

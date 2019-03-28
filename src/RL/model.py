@@ -17,9 +17,7 @@ class QFunc(nn.Module):
 
     def forward(self, x):
         x = F.relu(self.conv1(x))
-        # print("after conv1", x.shape)
         x = F.relu(self.conv2(x))
-        # print("after conv2", x.shape)
         x = F.relu(self.conv3(x))
         # print("shape", x.shape)
         x = F.relu(self.fc4(x.view(x.size(0), -1)))
@@ -62,22 +60,3 @@ class QFuncAll(nn.Module):
         x = self.fc_final(x)
 
         return x
-
-# class DQN_RAM(nn.Module):
-#     def __init__(self, in_features=4, num_actions=18):
-#         """
-#         Initialize a deep Q-learning network for testing algorithm
-#             in_features: number of features of input.
-#             num_actions: number of action-value to output, one-to-one correspondence to action in game.
-#         """
-#         super(DQN_RAM, self).__init__()
-#         self.fc1 = nn.Linear(in_features, 256)
-#         self.fc2 = nn.Linear(256, 128)
-#         self.fc3 = nn.Linear(128, 64)
-#         self.fc4 = nn.Linear(64, num_actions)
-#
-#     def forward(self, x):
-#         x = F.relu(self.fc1(x))
-#         x = F.relu(self.fc2(x))
-#         x = F.relu(self.fc3(x))
-#         return self.fc4(x)

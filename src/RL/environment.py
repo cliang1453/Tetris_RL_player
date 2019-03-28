@@ -3,7 +3,6 @@ from params import *
 import random
 from itertools import count
 import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
 
 
 def get_top(board):
@@ -136,7 +135,7 @@ def calc_reward(rows_cleared_prev, rows_cleared, is_end, reward_type="all"):
 
 
 def test_tetris():
-    env = TetrisGame(do_visualize=False)
+    env = TetrisGame(args=None, do_visualize=False)
     next_piece, field, rows_cleared, is_end = env.reset()
     for t in count():
         env.next_piece = 0
@@ -149,7 +148,6 @@ def test_tetris():
         if is_end:
             break
         action_space = get_action_space(next_piece)
-        # action = random.choice(action_space)
         action = [0, t % 5 * 2]
 
         next_piece, field, rows_cleared, is_end = env.step(action)
