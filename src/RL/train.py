@@ -43,7 +43,7 @@ def parse_args():
 exp1: --alg Q_learning --features cnn --reward-type all
 exp2: --alg DQN --features cnn --reward-type all
 exp3: --alg DQN --features cnn --reward-type cleared
-exp4: --alg DQN --features magic --reward-type all --lr 0.0001
+exp4: --alg DQN --features magic --reward-type all --lr 0.001
 exp5: --alg DQN --features all --reward-type all
 exp6: --alg DQN --features cnn --reward-type all --use-heuristic
 """
@@ -294,11 +294,6 @@ class ReplayBuffer:
 
 
 def main():
-    # args = parse_args()
-    # args.logger = Logger(args)
-    # policy = Policy(args)
-    # replay_buffer = ReplayBuffer(args)
-    # collect_data(args, policy, replay_buffer, num_games=args.num_games)
     train()
 
 
