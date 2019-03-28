@@ -35,6 +35,7 @@ def parse_args():
     parser.add_argument("--reward-type", type=str, default="all", help="options are all, cleared")
     parser.add_argument("--use-heuristic", action="store_true", help="using heuristic to collect data")
     parser.add_argument("--expected-q", action="store_true", help="using expectation to calculate target q")
+    parser.add_argument("--experiment", type=str, default="exp3", help="choose experiment to load")
     args = parser.parse_args()
 
     return args
@@ -215,9 +216,10 @@ class Policy:
 
     def load_params(self):
         if torch.cuda.is_available():
-            self.q_func.load_state_dict(torch.load(os.path.join(self.args.save_dir, "mymodel.pth"), map_location='gpu'))
+            self.q_func.load_state_dict(torch.load(os.path.join(self.args.save_dir, self.args.experiment, "mymodel.pth")))
+            self.q_func.to(torch.device("cuda"))
         else:
-            self.q_func.load_state_dict(torch.load(os.path.join(self.args.save_dir, "mymodel.pth"), map_location='cpu'))
+            self.q_func.load_state_dict(torch.load(os.path.join(self.args.save_dir, self.args.experiment, "mymodel.pth"), map_location='cpu'))
 
 
 class Logger:

@@ -49,6 +49,8 @@ def collect_data(args, policy, num_games=1):
 if __name__ == "__main__":
     args = parse_args()
     args.logger = Logger(args)
-    policy = MagicPolicy()
+    # policy = MagicPolicy(args)
+    policy = Policy(args)
+    policy.load_params()
 
     collect_data(args, policy)
