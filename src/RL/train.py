@@ -75,7 +75,14 @@ def parse_args():
         args.features = "cnn"
         args.reward_type = "all"
         args.use_heuristic = True
+        args.expected_q = True
+    if args.experiment == "exp9":
+        args.alg = "DQN"
+        args.features = "cnn"
+        args.reward_type = "all"
+        args.use_heuristic = True
         args.sample_t = True
+
 
         """
         game 0, 1: use heuristic policy with epsilon greedy
@@ -258,7 +265,7 @@ class Policy:
             self.target_q_func.load_state_dict(self.q_func.state_dict())
 
     def save_params(self, episode=None):
-        if episode:
+        if episode is not None:
             torch.save(self.q_func.state_dict(), os.path.join(self.args.save_dir, "mymodel_" + str((episode // self.args.save_interval) % 10) + ".pth"))
         else:
             torch.save(self.q_func.state_dict(), os.path.join(self.args.save_dir, "bestmodel.pth"))
@@ -443,9 +450,9 @@ def train():
 
             if args.sample_t and strategy == "epsilon_greedy" and len(past_validation_steps_list) == 10 and game >= 4:
                 if game <= 7:
-                    epsilon_greedy_start = np.random.choice(int(np.median(np.array(past_validation_steps_list) / 2)))
+                    epsilon_greedy_start = np.random.choice(int(np.median(np.array(past_validation_steps_list)) / 2))
                 else:
-                    epsilon_greedy_start = np.random.choice(int(np.max(np.array(past_validation_steps_list) / 2)))
+                    epsilon_greedy_start = np.random.choice(int(np.max(np.array(past_validation_steps_list)) / 2))
                 # print(epsilon_greedy_start)
 
             for t in count():
@@ -489,6 +496,7 @@ def train():
                 print("saving new best policy")
                 policy.save_params()
                 max_avg_rows_cleared = np.average(rows_cleared_list)
+            policy.save_params(episode)
 
         if strategy != "random":
             args.logger.add_reward(np.average(reward_accum_list), is_valid=(strategy == "validation"))
