@@ -28,7 +28,7 @@ def load_data(args, exp_name):
 if __name__ == "__main__":
     args = parse_args()
 
-    for exp_name in ["exp1", "exp2", "exp3", "exp4", "exp5", "exp6", "exp7"]:
+    for exp_name in ["exp1", "exp2", "exp3", "exp4", "exp5", "exp6", "exp7", "exp8", "exp9"]:
         q_list, reward_validation_list, reward_list, cleared_list = load_data(args, exp_name)
         # plt.figure("reward plot")
         # plt.plot(reward_validation_list)
@@ -37,9 +37,9 @@ if __name__ == "__main__":
             avg_cleared.append(sum(cleared_list[i*10:i*10 + 10])/10.0)
 
         plt.figure("cleared plot")
-        plt.plot(avg_cleared[:150])
+        plt.plot(avg_cleared[:50])
 
-    plt.legend(["exp1", "exp2", "exp3", "exp4", "exp5", "exp6", "exp7"])
+    plt.legend(["exp1", "exp2", "exp3", "exp4", "exp5", "exp6", "exp7", "exp8", "exp9"])
     plt.xlabel("Number of games (in unit of 1000)")
     plt.ylabel("Average number of rows cleared")
     plt.title("Average number of rows cleared v.s. Number of games")

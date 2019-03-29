@@ -271,11 +271,14 @@ class Policy:
             torch.save(self.q_func.state_dict(), os.path.join(self.args.save_dir, "bestmodel.pth"))
 
     def load_params(self):
+        filename = os.path.join(self.args.save_dir, self.args.experiment, "mymodel.pth")
+        if not os.path.isfile(filename):
+            filename = os.path.join(self.args.save_dir, self.args.experiment, "bestmodel.pth")
         if torch.cuda.is_available():
-            self.q_func.load_state_dict(torch.load(os.path.join(self.args.save_dir, self.args.experiment, "mymodel.pth")))
+            self.q_func.load_state_dict(torch.load(filename))
             self.q_func.to(torch.device("cuda"))
         else:
-            self.q_func.load_state_dict(torch.load(os.path.join(self.args.save_dir, self.args.experiment, "mymodel.pth"), map_location='cpu'))
+            self.q_func.load_state_dict(torch.load(filename, map_location='cpu'))
 
 
 class Logger:
