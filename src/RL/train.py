@@ -36,6 +36,7 @@ def parse_args():
     parser.add_argument("--reward-type", type=str, default="all", help="options are all, cleared")
     parser.add_argument("--use-heuristic", action="store_true", help="using heuristic to collect data")
     parser.add_argument("--expected-q", action="store_true", help="using expectation to calculate target q")
+    parser.add_argument("--sample-t", action="store_true", help="in first t use validation, later")
     parser.add_argument("--experiment", type=str, default="exp3", help="choose experiment to load")
     args = parser.parse_args()
     if args.experiment == "exp1":
@@ -69,6 +70,20 @@ def parse_args():
         args.features = "cnn"
         args.reward_type = "all"
         args.expected_q = True
+    if args.experiment == "exp8":
+        args.alg = "DQN"
+        args.features = "cnn"
+        args.reward_type = "all"
+        args.use_heuristic = True
+        args.sample_t = True
+
+        """
+        game 0, 1: use heuristic policy with epsilon greedy
+        game 2, 3: whole game epsilon greedy with current policy
+        game 4~ 7: sample t, validation with current policy before t, epsilon greedy after t
+        game 8~ 9: sample t by max
+        """
+
     return args
 
 
@@ -417,60 +432,56 @@ def train():
         # collect data
         reward_accum_list = []
         rows_cleared_list = []
-        
+
         for game in range(args.num_games):
-            
+
             env.reset()
             reward_accum = 0
-            epsilon_greedy_start = 0 #initialize to 0 : do exploration first
+            epsilon_greedy_start = 0  # initialize to 0 : do exploration first
 
-            if strategy == "epsilon_greedy" and len(past_validation_steps_list) == 10:
-                epsilon_greedy_start = np.random.choice(int(np.average(np.array(past_validation_steps_list)/2)))
-                #print(epsilon_greedy_start)
+            if args.sample_t and strategy == "epsilon_greedy" and len(past_validation_steps_list) == 10 and game >= 4:
+                if game <= 7:
+                    epsilon_greedy_start = np.random.choice(int(np.median(np.array(past_validation_steps_list) / 2)))
+                else:
+                    epsilon_greedy_start = np.random.choice(int(np.max(np.array(past_validation_steps_list) / 2)))
+                # print(epsilon_greedy_start)
 
             for t in count():
                 state = [env.field, env.next_piece]
                 rows_cleared_prev = env.rows_cleared
 
-                if (strategy == "epsilon_greedy" and t < epsilon_greedy_start) or (strategy == "validation"):
+                if args.use_heuristic and game < 2 and strategy == "epsilon_greedy":  # for game 0, 1 use heuristic policy
+                    action = heuristic_policy.take_action(state, strategy)
+                elif (strategy == "epsilon_greedy" and t < epsilon_greedy_start) or (strategy == "validation"):
                     action = policy.take_action(state, "validation")
                 else:
-                    if args.use_heuristic and game < 2:
-                        action = heuristic_policy.take_action(state, strategy)
-                    else:
-                        action = policy.take_action(state, strategy)
-
-                # if (strategy != "validation") and args.use_heuristic and (game < 2):
-                #     action = heuristic_policy.take_action(state, strategy)
-                # else:
-                #     action = policy.take_action(state, strategy)
+                    action = policy.take_action(state, strategy)
 
                 next_piece, field, rows_cleared, is_end = env.step(action)
                 reward = calc_reward(rows_cleared_prev, rows_cleared, is_end, reward_type=args.reward_type)
                 reward_accum += reward
-                
+
                 if strategy == "random" or (strategy == "epsilon_greedy" and t >= epsilon_greedy_start):
                     replay_buffer.add(state, action, reward, is_end)
+                    # print("storing replay buffer", t)
 
-                
                 if is_end:
-                    
                     max_cleared = max(max_cleared, rows_cleared)
-                    print(colored(
-                        "=" * 20 + "Episode" + str(episode) + " Game " + str(game) + " " + strategy + "=" * 20 + str(rows_cleared) + "/" + str(max_cleared),
-                        'red'))
+                    print_str = "=" * 20 + " Episode " + str(episode) + "\tGame " + str(game) + " " + strategy + " " + "=" * 20 + " cleared/max_cleared:" \
+                                + str(rows_cleared) + "/" + str(max_cleared) + "\tsample_t/total_t: " + str(epsilon_greedy_start) + "/" + str(t)
+                    print(colored(print_str, 'red'))
 
                     reward_accum_list.append(reward_accum)
                     rows_cleared_list.append(rows_cleared)
-                    
+
                     if strategy == "validation":
 
                         past_validation_steps_list.append(t)
                         if len(past_validation_steps_list) > 10:
                             past_validation_steps_list.popleft()
-                    
+
                     break
-        
+
         if strategy != "random":
             args.logger.add_reward(np.average(reward_accum_list), is_valid=(strategy == "validation"))
             args.logger.add_cleared(np.average(reward_accum_list))
