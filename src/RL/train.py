@@ -13,6 +13,7 @@ from torch.autograd import Variable
 from termcolor import colored
 from itertools import count
 import pickle
+from collections import deque
 
 
 def parse_args():
@@ -398,6 +399,8 @@ def train():
     env = TetrisGame(args)
     max_cleared = 0
 
+    past_validation_steps_list = deque([])
+
     for episode in range(args.num_episodes):
 
         if episode < args.learning_start:
@@ -414,24 +417,44 @@ def train():
         # collect data
         reward_accum_list = []
         rows_cleared_list = []
+        
         for game in range(args.num_games):
+            
             env.reset()
             reward_accum = 0
+            epsilon_greedy_start = 0 #initialize to 0 : do exploration first
+
+            if strategy == "epsilon_greedy" and len(past_validation_steps_list) == 10:
+                epsilon_greedy_start = np.random.choice(int(np.average(np.array(past_validation_steps_list)/2)))
+                #print(epsilon_greedy_start)
+
             for t in count():
                 state = [env.field, env.next_piece]
                 rows_cleared_prev = env.rows_cleared
-                if (strategy != "validation") and args.use_heuristic and (game < 2):
-                    action = heuristic_policy.take_action(state, strategy)
+
+                if (strategy == "epsilon_greedy" and t < epsilon_greedy_start) or (strategy == "validation"):
+                    action = policy.take_action(state, "validation")
                 else:
-                    action = policy.take_action(state, strategy)
+                    if args.use_heuristic and game < 2:
+                        action = heuristic_policy.take_action(state, strategy)
+                    else:
+                        action = policy.take_action(state, strategy)
+
+                # if (strategy != "validation") and args.use_heuristic and (game < 2):
+                #     action = heuristic_policy.take_action(state, strategy)
+                # else:
+                #     action = policy.take_action(state, strategy)
+
                 next_piece, field, rows_cleared, is_end = env.step(action)
                 reward = calc_reward(rows_cleared_prev, rows_cleared, is_end, reward_type=args.reward_type)
                 reward_accum += reward
-                if strategy != "validation":
-                    # store transition
+                
+                if strategy == "random" or (strategy == "epsilon_greedy" and t >= epsilon_greedy_start):
                     replay_buffer.add(state, action, reward, is_end)
 
+                
                 if is_end:
+                    
                     max_cleared = max(max_cleared, rows_cleared)
                     print(colored(
                         "=" * 20 + "Episode" + str(episode) + " Game " + str(game) + " " + strategy + "=" * 20 + str(rows_cleared) + "/" + str(max_cleared),
@@ -439,7 +462,15 @@ def train():
 
                     reward_accum_list.append(reward_accum)
                     rows_cleared_list.append(rows_cleared)
+                    
+                    if strategy == "validation":
+
+                        past_validation_steps_list.append(t)
+                        if len(past_validation_steps_list) > 10:
+                            past_validation_steps_list.popleft()
+                    
                     break
+        
         if strategy != "random":
             args.logger.add_reward(np.average(reward_accum_list), is_valid=(strategy == "validation"))
             args.logger.add_cleared(np.average(reward_accum_list))
