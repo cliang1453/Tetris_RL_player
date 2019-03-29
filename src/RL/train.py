@@ -37,7 +37,7 @@ def parse_args():
     parser.add_argument("--use-heuristic", action="store_true", help="using heuristic to collect data")
     parser.add_argument("--expected-q", action="store_true", help="using expectation to calculate target q")
     parser.add_argument("--sample-t", action="store_true", help="in first t use validation, later")
-    parser.add_argument("--experiment", type=str, default="exp3", help="choose experiment to load")
+    parser.add_argument("--experiment", type=str, default="exp9", help="choose experiment to load")
     args = parser.parse_args()
     if args.experiment == "exp1":
         args.alg = "Q_learning"
