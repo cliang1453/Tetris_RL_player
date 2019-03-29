@@ -257,8 +257,12 @@ class Policy:
         if self.args.alg == "DQN":
             self.target_q_func.load_state_dict(self.q_func.state_dict())
 
-    def save_params(self):
-        torch.save(self.q_func.state_dict(), os.path.join(self.args.save_dir, "mymodel.pth"))
+    def save_params(self, episode = None):
+        if episode:
+            torch.save(self.q_func.state_dict(), os.path.join(self.args.save_dir, "mymodel_" + str(int(episode/10)%10) + ".pth"))
+        else:
+            torch.save(self.q_func.state_dict(), os.path.join(self.args.save_dir, "bestmodel.pth"))
+
 
     def load_params(self):
         if torch.cuda.is_available():
@@ -426,17 +430,18 @@ def train():
             else:
                 strategy = "epsilon_greedy"
 
-        if strategy == "validation":
-            policy.save_params()
+
 
         # collect data
         reward_accum_list = []
         rows_cleared_list = []
+        max_avg_rows_cleared = -1
 
         for game in range(args.num_games):
 
             env.reset()
             reward_accum = 0
+
             epsilon_greedy_start = 0  # initialize to 0 : do exploration first
 
             if args.sample_t and strategy == "epsilon_greedy" and len(past_validation_steps_list) == 10 and game >= 4:
@@ -467,7 +472,7 @@ def train():
 
                 if is_end:
                     max_cleared = max(max_cleared, rows_cleared)
-                    print_str = "=" * 20 + " Episode " + str(episode) + "\tGame " + str(game) + " " + strategy + " " + "=" * 20 + " cleared/max_cleared:" \
+                    print_str = "=" * 20 + " Episode " + str(episode) + "\tGame " + str(game) + " " + strategy + " " + "=" * 20 + " cleared/max_cleared: " \
                                 + str(rows_cleared) + "/" + str(max_cleared) + "\tsample_t/total_t: " + str(epsilon_greedy_start) + "/" + str(t)
                     print(colored(print_str, 'red'))
 
@@ -481,6 +486,12 @@ def train():
                             past_validation_steps_list.popleft()
 
                     break
+
+        if strategy == "validation":
+            if np.average(rows_cleared_list) > max_avg_rows_cleared:
+                print("saving new best policy")
+                policy.save_params()
+                max_avg_rows_cleared = np.average(rows_cleared_list)
 
         if strategy != "random":
             args.logger.add_reward(np.average(reward_accum_list), is_valid=(strategy == "validation"))
